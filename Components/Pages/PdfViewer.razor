@@ -1,0 +1,22 @@
+﻿@page "/pdfviewer"
+
+<PageTitle>PDF Viewer</PageTitle>
+
+<h1>PDF Viewer</h1>
+
+<DxPdfViewer CssClass="h-100 w-100" DocumentContent="DocumentContent" ZoomLevel="1" />
+
+@code {
+    byte[]? DocumentContent { get; set; }
+
+    protected override async Task OnInitializedAsync() {
+        await base.OnInitializedAsync();
+
+        await using Stream stream =
+            System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("ObracunDb.Documents.Invoice.pdf")
+            ?? throw new InvalidOperationException("Resource not found.");
+        using MemoryStream ms = new();
+        await stream.CopyToAsync(ms);
+        DocumentContent = ms.ToArray();
+    }
+}

@@ -1,0 +1,132 @@
+@page "/revizijska-sled"
+@rendermode InteractiveServer
+@using FirebirdSql.Data.FirebirdClient
+@using ObracunDb.Data.Entities
+@inject ObracunDb.Data.FirebirdConnectionManager ConnectionManager
+@inject ObracunDb.Services.AuthService AuthService
+
+<PageTitle>Revizijska sled</PageTitle>
+
+@if (!AuthService.JeDirektor)
+{
+    <div class="alert alert-danger">Dostop samo za direktorje.</div>
+}
+else
+{
+    <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <h5 style="margin: 0;">Revizijska sled</h5>
+            @if (isLoading)
+            {
+                <span class="text-muted">Nalagam...</span>
+            }
+        </div>
+
+        @if (zapisi.Count > 0)
+        {
+            <div style="flex: 1; overflow: hidden; min-height: 0;">
+                <DxGrid Data="@zapisi"
+                        KeyFieldName="@nameof(ObracunRevizija.Id)"
+                        ShowFilterRow="true"
+                        CssClass="w-100"
+                        PageSize="0"
+                        VirtualScrollingEnabled="true"
+                        style="height: 100%">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Id)" Caption="ID" Width="70px" SortOrder="GridColumnSortOrder.Descending" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy HH:mm:ss" Width="160px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Uporabnik)" Caption="Uporabnik" Width="120px">
+                            <EditSettings>
+                                <DxComboBoxSettings Data="uporabnikList" SearchMode="ListSearchMode.AutoSearch" SearchFilterCondition="ListSearchFilterCondition.Contains" />
+                            </EditSettings>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Tabela)" Caption="Tabela" Width="140px">
+                            <EditSettings>
+                                <DxComboBoxSettings Data="tabelaList" SearchMode="ListSearchMode.AutoSearch" SearchFilterCondition="ListSearchFilterCondition.Contains" />
+                            </EditSettings>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Polje)" Caption="Polje" Width="140px">
+                            <EditSettings>
+                                <DxComboBoxSettings Data="poljeList" SearchMode="ListSearchMode.AutoSearch" SearchFilterCondition="ListSearchFilterCondition.Contains" />
+                            </EditSettings>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.StaraVrednost)" Caption="Stara vrednost" Width="150px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.NovaVrednost)" Caption="Nova vrednost" Width="150px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Kontekst)" Caption="Kontekst" Width="180px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Leto)" Caption="Leto" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(ObracunRevizija.IdVTabeli)" Caption="ID v tabeli" Width="90px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(ObracunRevizija.Id)" DisplayText="Zapisov: {0}" />
+                    </TotalSummary>
+                </DxGrid>
+            </div>
+        }
+        else if (!isLoading)
+        {
+            <p class="text-muted mt-2">Ni zapisov.</p>
+        }
+    </div>
+}
+
+@code {
+    bool isLoading;
+    List<ObracunRevizija> zapisi = new();
+    List<string> uporabnikList = new();
+    List<string> tabelaList = new();
+    List<string> poljeList = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!AuthService.JeDirektor) return;
+        await NaloziPodatke();
+        uporabnikList = zapisi.Select(z => z.Uporabnik).Where(u => !string.IsNullOrEmpty(u)).Distinct().OrderBy(u => u).ToList();
+        tabelaList = zapisi.Select(z => z.Tabela).Where(t => !string.IsNullOrEmpty(t)).Distinct().OrderBy(t => t).ToList();
+        poljeList = zapisi.Select(z => z.Polje).Where(p => !string.IsNullOrEmpty(p)).Distinct().OrderBy(p => p).ToList();
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+
+        try
+        {
+            await using var connection = ConnectionManager.GetConnection();
+            await connection.OpenAsync();
+
+            await using var cmd = new FbCommand(@"
+                SELECT ID, DATUM, UPORABNIK, TABELA, POLJE, STARA_VREDNOST, NOVA_VREDNOST, KONTEKST, STEVILKA, LETO, ID_V_TABELI
+                FROM OBRACUN_REVIZIJA
+                ORDER BY ID DESC", connection);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                zapisi.Add(new ObracunRevizija
+                {
+                    Id = reader.GetInt32(0),
+                    Datum = reader.GetDateTime(1),
+                    Uporabnik = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                    Tabela = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim(),
+                    Polje = reader.IsDBNull(4) ? "" : reader.GetString(4).Trim(),
+                    StaraVrednost = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    NovaVrednost = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    Kontekst = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    Stevilka = reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                    Leto = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                    IdVTabeli = reader.IsDBNull(10) ? null : reader.GetInt32(10)
+                });
+            }
+        }
+        catch
+        {
+            zapisi.Clear();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,926 @@
+@page "/nastavitve"
+@using ObracunDb.Services
+@using ObracunDb.Data.Entities
+@using ObracunDb.Data.DTOs
+@using System.Net.Http
+@inject ParametriService Parametri
+@inject ArtikelService ArtikelService
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Nastavitve</PageTitle>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else
+{
+    <DxTabs @bind-ActiveTabIndex="@activeTabIndex">
+        <DxTabPage Text="Splošno">
+            <div class="p-3" style="max-width:1750px;">
+                <table class="table table-sm table-borderless">
+                    <tbody>
+                        <tr>
+                            <td style="width:250px; vertical-align:middle;"><strong>Šifra artikla za kilometrino</strong></td>
+                            <td>
+                                <DxComboBox Data="@artikli"
+                                            Value="@sifraKilometrina"
+                                            ValueChanged="@((string v) => OnKilometrinaSifraChanged(v))"
+                                            TextFieldName="DisplayName"
+                                            ValueFieldName="Sifra"
+                                            NullText="Izberi artikel..."
+                                            CssClass="w-100"
+                                            FilteringMode="DataGridFilteringMode.Contains"
+                                            ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="vertical-align:middle;"><strong>Procent popusta pogodbe</strong></td>
+                            <td><DxSpinEdit @bind-Value="@procentPopusta" MinValue="0" MaxValue="100" CssClass="w-100" /></td>
+                        </tr>
+                        <tr>
+                            <td style="vertical-align:middle;"><strong>Toleranca minut za obračun</strong></td>
+                            <td><DxSpinEdit @bind-Value="@tolerancaMinut" MinValue="0" MaxValue="999" CssClass="w-100" /></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                @if (isAdminOrVodja)
+                {
+                    <h6 class="mt-4 mb-3"><strong>VASCO API nastavitve</strong></h6>
+                    <table class="table table-sm table-borderless">
+                        <tbody>
+                            <tr>
+                                <td style="width:250px; vertical-align:middle;"><strong>API URL</strong></td>
+                                <td><DxTextBox @bind-Text="@vascoApiUrl" CssClass="w-100" /></td>
+                            </tr>
+                            <tr>
+                                <td style="vertical-align:middle;"><strong>Uporabniško ime</strong></td>
+                                <td><DxTextBox @bind-Text="@vascoApiUporabnik" CssClass="w-100" /></td>
+                            </tr>
+                            <tr>
+                                <td style="vertical-align:middle;"><strong>Geslo</strong></td>
+                                <td><DxTextBox @bind-Text="@vascoApiGeslo" Password="true" CssClass="w-100" /></td>
+                            </tr>
+                            <tr>
+                                <td style="vertical-align:middle;"><strong>Davčna številka</strong></td>
+                                <td><DxTextBox @bind-Text="@vascoApiDavcna" CssClass="w-100" /></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="d-flex gap-2 mt-2">
+                        <DxButton Text="@testButtonText" RenderStyle="ButtonRenderStyle.Info" Click="@OnTestVascoApi" Enabled="@(!isTesting)" />
+                        <DxButton Text="Faktura" RenderStyle="ButtonRenderStyle.Info" Click="@OnFakturaVascoApi" />
+                        <DxButton Text="Počisti log" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => vascoLog = "")" />
+                    </div>
+                    @if (!string.IsNullOrEmpty(vascoLog))
+                    {
+                        <h6 class="mt-3 mb-2"><strong>Status / Log:</strong></h6>
+                        <textarea readonly style="width:100%; height:400px; font-family:monospace; font-size:0.85rem; white-space:pre; overflow:auto;">@vascoLog</textarea>
+                    }
+                }
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="HD Servisna">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Servisna" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="HD Strokovna">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Strokovna" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="HD Programerska">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Programerska" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="Teren servisna">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Teren_Servisna" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="Teren strokovna">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Teren_Strokovna" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="Teren programerska">
+            <div class="p-3">
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr>
+                            <th style="width:280px;">Obdobje</th>
+                            <th style="min-width:500px;">Artikel</th>
+                            <th style="width:100px;">Enota</th>
+                            <th style="width:120px;">Prodajna cena</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (_, suffix) in VrsticeConfig)
+                        {
+                            var key = "Teren_Programerska" + suffix;
+                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                            {
+                                var localKey = key;
+                                <tr>
+                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                    <td>
+                                        <DxComboBox Data="@artikli"
+                                                    Value="@vrstica.Sifra"
+                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                    TextFieldName="DisplayName"
+                                                    ValueFieldName="Sifra"
+                                                    NullText="Izberi artikel..."
+                                                    CssClass="w-100"
+                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                    </td>
+                                                                     <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                                                </tr>
+                                                            }
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </DxTabPage>
+
+                                        <DxTabPage Text="Delavnica servisna">
+                                            <div class="p-3">
+                                                <table class="table table-sm table-bordered">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width:280px;">Obdobje</th>
+                                                            <th style="min-width:500px;">Artikel</th>
+                                                            <th style="width:100px;">Enota</th>
+                                                            <th style="width:120px;">Prodajna cena</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var (_, suffix) in VrsticeConfig)
+                                                        {
+                                                            var key = "Delavnica_Servisna" + suffix;
+                                                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                                                            {
+                                                                var localKey = key;
+                                                                <tr>
+                                                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                                                    <td>
+                                                                        <DxComboBox Data="@artikli"
+                                                                                    Value="@vrstica.Sifra"
+                                                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                                                    TextFieldName="DisplayName"
+                                                                                    ValueFieldName="Sifra"
+                                                                                    NullText="Izberi artikel..."
+                                                                                    CssClass="w-100"
+                                                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                                                    </td>
+                                                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                                                </tr>
+                                                            }
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </DxTabPage>
+
+                                        <DxTabPage Text="Delavnica strokovna">
+                                            <div class="p-3">
+                                                <table class="table table-sm table-bordered">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width:280px;">Obdobje</th>
+                                                            <th style="min-width:500px;">Artikel</th>
+                                                            <th style="width:100px;">Enota</th>
+                                                            <th style="width:120px;">Prodajna cena</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var (_, suffix) in VrsticeConfig)
+                                                        {
+                                                            var key = "Delavnica_Strokovna" + suffix;
+                                                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                                                            {
+                                                                var localKey = key;
+                                                                <tr>
+                                                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                                                    <td>
+                                                                        <DxComboBox Data="@artikli"
+                                                                                    Value="@vrstica.Sifra"
+                                                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                                                    TextFieldName="DisplayName"
+                                                                                    ValueFieldName="Sifra"
+                                                                                    NullText="Izberi artikel..."
+                                                                                    CssClass="w-100"
+                                                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                                                    </td>
+                                                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                                                </tr>
+                                                            }
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </DxTabPage>
+
+                                        <DxTabPage Text="Delavnica programerska">
+                                            <div class="p-3">
+                                                <table class="table table-sm table-bordered">
+                                                    <thead>
+                                                        <tr>
+                                                            <th style="width:280px;">Obdobje</th>
+                                                            <th style="min-width:500px;">Artikel</th>
+                                                            <th style="width:100px;">Enota</th>
+                                                            <th style="width:120px;">Prodajna cena</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var (_, suffix) in VrsticeConfig)
+                                                        {
+                                                            var key = "Delavnica_Programerska" + suffix;
+                                                            if (artikelVrstice.TryGetValue(key, out var vrstica))
+                                                            {
+                                                                var localKey = key;
+                                                                <tr>
+                                                                    <td style="vertical-align:middle;">@vrstica.Naziv</td>
+                                                                    <td>
+                                                                        <DxComboBox Data="@artikli"
+                                                                                    Value="@vrstica.Sifra"
+                                                                                    ValueChanged="@((string v) => OnSifraChanged(localKey, v))"
+                                                                                    TextFieldName="DisplayName"
+                                                                                    ValueFieldName="Sifra"
+                                                                                    NullText="Izberi artikel..."
+                                                                                    CssClass="w-100"
+                                                                                    FilteringMode="DataGridFilteringMode.Contains"
+                                                                                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto" />
+                                                                    </td>
+                                                                    <td style="vertical-align:middle;">@vrstica.Enota</td>
+                                                                    <td style="vertical-align:middle; text-align:right;">@vrstica.ProdajnaCena</td>
+                                                                </tr>
+                                                            }
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </DxTabPage>
+                                    </DxTabs>
+
+    <div class="d-flex gap-2 mt-3">
+        <DxButton Text="Shrani" RenderStyle="ButtonRenderStyle.Primary" Click="@Shrani" />
+        <DxButton Text="Prekliči" RenderStyle="ButtonRenderStyle.Secondary" Click="@Preklici" />
+    </div>
+
+    @if (errorMessage != null)
+    {
+        <div class="alert alert-danger mt-3" style="max-width:600px;">@errorMessage</div>
+    }
+}
+
+@code {
+    bool isLoading = true;
+    bool isAdminOrVodja;
+    int activeTabIndex;
+    string? errorMessage;
+
+    // Seznam artiklov za DxComboBox
+    List<ArtikelDto>? artikli;
+
+    // Splošno
+    string sifraKilometrina = "";
+    int procentPopusta;
+    int tolerancaMinut;
+
+    // VASCO API
+    string vascoApiUrl = "";
+    string vascoApiUporabnik = "";
+    string vascoApiGeslo = "";
+    string vascoApiDavcna = "";
+    string vascoLog = "";
+    bool isTesting;
+    string testButtonText = "Test";
+
+    // Artikel vrstice za zavihke Servisna/Strokovna/Programerska
+    Dictionary<string, ArtikelVrstica> artikelVrstice = new();
+
+    static readonly (string Naziv, string Suffix)[] VrsticeConfig =
+    [
+        ($"Pogodba, delavnik {ParametriService.Ura7}-{ParametriService.Ura16}", "PogodbaDel7_16"),
+        ($"Brez pogodbe, delavnik {ParametriService.Ura7}-{ParametriService.Ura16}", "BrezPogodbeDel7_16"),
+        ($"Pogodba, delavnik {ParametriService.Ura16}-{ParametriService.Ura22}", "PogodbaDel16_22"),
+        ($"Brez pogodbe, delavnik {ParametriService.Ura16}-{ParametriService.Ura22}", "BrezPogodbeDel16_22"),
+        ($"Pogodba, delavnik {ParametriService.Ura22}-{ParametriService.Ura7}", "PogodbaDel22_7"),
+        ($"Brez pogodbe, delavnik {ParametriService.Ura22}-{ParametriService.Ura7}", "BrezPogodbeDel22_7"),
+        ($"Pogodba, vikend {ParametriService.Ura7}-{ParametriService.Ura16}", "PogodbaVik7_16"),
+        ($"Brez pogodbe, vikend {ParametriService.Ura7}-{ParametriService.Ura16}", "BrezPogodbeVik7_16"),
+        ($"Pogodba, vikend {ParametriService.Ura16}-{ParametriService.Ura22}", "PogodbaVik16_22"),
+        ($"Brez pogodbe, vikend {ParametriService.Ura16}-{ParametriService.Ura22}", "BrezPogodbeVik16_22"),
+        ($"Pogodba, vikend {ParametriService.Ura22}-{ParametriService.Ura7}", "PogodbaVik22_7"),
+        ($"Brez pogodbe, vikend {ParametriService.Ura22}-{ParametriService.Ura7}", "BrezPogodbeVik22_7"),
+        ($"Pogodba, praznik {ParametriService.Ura7}-{ParametriService.Ura16}", "PogodbaP7_16"),
+        ($"Brez pogodbe, praznik {ParametriService.Ura7}-{ParametriService.Ura16}", "BrezPogodbeP7_16"),
+        ($"Pogodba, praznik {ParametriService.Ura16}-{ParametriService.Ura22}", "PogodbaP16_22"),
+        ($"Brez pogodbe, praznik {ParametriService.Ura16}-{ParametriService.Ura22}", "BrezPogodbeP16_22"),
+        ($"Pogodba, praznik {ParametriService.Ura22}-{ParametriService.Ura7}", "PogodbaP22_7"),
+        ($"Brez pogodbe, praznik {ParametriService.Ura22}-{ParametriService.Ura7}", "BrezPogodbeP22_7")
+    ];
+
+    record ArtikelVrstica(string Naziv, string ParameterKey)
+    {
+        public string Sifra { get; set; } = "";
+        public string ArtikelNaziv { get; set; } = "";
+        public string Enota { get; set; } = "";
+        public string ProdajnaCena { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var vloga = AuthService.CurrentUser?.Vloga;
+        isAdminOrVodja = vloga == 0 || vloga == 1;
+
+        if (!isAdminOrVodja)
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
+        // Naloži seznam artiklov
+        artikli = await ArtikelService.GetAllArtikliAsync();
+
+        // Splošno
+        sifraKilometrina = Parametri.GetString(ObracunParam.SifraKilometrina) ?? "";
+        procentPopusta = Parametri.GetInt(ObracunParam.ProcentPopustaPogodbe);
+        tolerancaMinut = Parametri.GetInt(ObracunParam.TolerancaMinut);
+
+        // VASCO API
+        vascoApiUrl = Parametri.GetString(ObracunParam.VascoApiUrl) ?? "";
+        vascoApiUporabnik = Parametri.GetString(ObracunParam.VascoApiUporabnik) ?? "";
+        vascoApiGeslo = Parametri.GetString(ObracunParam.VascoApiGeslo) ?? "";
+        vascoApiDavcna = Parametri.GetString(ObracunParam.VascoApiDavcna) ?? "";
+
+        // Artikel vrstice
+        foreach (var prefix in new[] { "Servisna", "Strokovna", "Programerska", "Teren_Servisna", "Teren_Strokovna", "Teren_Programerska", "Delavnica_Servisna", "Delavnica_Strokovna", "Delavnica_Programerska" })
+        {
+            foreach (var (naziv, suffix) in VrsticeConfig)
+            {
+                var key = prefix + suffix;
+                var param = Enum.Parse<ObracunParam>(key);
+                var sifra = Parametri.GetString(param) ?? "";
+                artikelVrstice[key] = new ArtikelVrstica(naziv, key) { Sifra = sifra };
+            }
+        }
+
+        // Naloži enote in cene za vse artikle, ki imajo šifro
+        await NaloziArtikelDetaileAsync();
+
+        isLoading = false;
+    }
+
+    async Task NaloziArtikelDetaileAsync()
+    {
+        var unikatneSifre = artikelVrstice.Values
+            .Where(v => !string.IsNullOrWhiteSpace(v.Sifra))
+            .Select(v => v.Sifra)
+            .Distinct()
+            .ToList();
+
+        var cache = new Dictionary<string, (string Naziv, string Enota, decimal ProdajnaCena)>();
+        foreach (var sifra in unikatneSifre)
+        {
+            var detail = await ArtikelService.GetArtikelDetailBySifraAsync(sifra);
+            if (detail.HasValue)
+                cache[sifra] = detail.Value;
+        }
+
+        foreach (var vrstica in artikelVrstice.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(vrstica.Sifra) && cache.TryGetValue(vrstica.Sifra, out var d))
+            {
+                vrstica.ArtikelNaziv = d.Naziv;
+                vrstica.Enota = d.Enota;
+                vrstica.ProdajnaCena = d.ProdajnaCena.ToString("N2");
+            }
+        }
+    }
+
+    async Task OnKilometrinaSifraChanged(string novaSifra)
+    {
+        sifraKilometrina = novaSifra ?? "";
+    }
+
+    async Task OnSifraChanged(string key, string novaSifra)
+    {
+        var vrstica = artikelVrstice[key];
+        vrstica.Sifra = novaSifra ?? "";
+        vrstica.ArtikelNaziv = "";
+        vrstica.Enota = "";
+        vrstica.ProdajnaCena = "";
+
+        if (!string.IsNullOrWhiteSpace(novaSifra))
+        {
+            var detail = await ArtikelService.GetArtikelDetailBySifraAsync(novaSifra);
+            if (detail.HasValue)
+            {
+                vrstica.ArtikelNaziv = detail.Value.Naziv;
+                vrstica.Enota = detail.Value.Enota;
+                vrstica.ProdajnaCena = detail.Value.ProdajnaCena.ToString("N2");
+            }
+        }
+    }
+
+    async Task Shrani()
+    {
+        try
+        {
+            errorMessage = null;
+
+            await Parametri.SaveToDatabaseAsync(ObracunParam.SifraKilometrina, sifraKilometrina);
+            await Parametri.SaveToDatabaseAsync(ObracunParam.ProcentPopustaPogodbe, procentPopusta);
+            await Parametri.SaveToDatabaseAsync(ObracunParam.TolerancaMinut, tolerancaMinut);
+
+            await Parametri.SaveToDatabaseAsync(ObracunParam.VascoApiUrl, vascoApiUrl);
+            await Parametri.SaveToDatabaseAsync(ObracunParam.VascoApiUporabnik, vascoApiUporabnik);
+            await Parametri.SaveToDatabaseAsync(ObracunParam.VascoApiGeslo, vascoApiGeslo);
+            await Parametri.SaveToDatabaseAsync(ObracunParam.VascoApiDavcna, vascoApiDavcna);
+
+            foreach (var (key, vrstica) in artikelVrstice)
+            {
+                var param = Enum.Parse<ObracunParam>(key);
+                await Parametri.SaveToDatabaseAsync(param, vrstica.Sifra);
+            }
+
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri shranjevanju: {ex.Message}";
+        }
+    }
+
+    void Preklici()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+
+    void Log(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+        vascoLog += $"[{timestamp}] {message}\n";
+        StateHasChanged();
+    }
+
+    async Task OnTestVascoApi()
+    {
+        vascoLog = "";
+        isTesting = true;
+        testButtonText = "Testiram...";
+
+        Log("-----------------------------------------------------------");
+        Log("ZAČETEK TESTA VASCO API");
+        Log("-----------------------------------------------------------");
+
+        if (string.IsNullOrWhiteSpace(vascoApiUrl))
+        {
+            Log("NAPAKA: API URL ni vnešen!");
+            isTesting = false;
+            testButtonText = "Test";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(vascoApiUporabnik) || string.IsNullOrWhiteSpace(vascoApiGeslo))
+        {
+            Log("NAPAKA: Uporabniško ime ali geslo ni vnešeno!");
+            isTesting = false;
+            testButtonText = "Test";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(vascoApiDavcna))
+        {
+            Log("NAPAKA: Davčna številka ni vnešena!");
+            isTesting = false;
+            testButtonText = "Test";
+            return;
+        }
+
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(90);
+
+            var baseUrl = vascoApiUrl.TrimEnd('/');
+
+            // KORAK 1: AVTENTIKACIJA
+            Log("");
+            Log("KORAK 1: AVTENTIKACIJA");
+            Log("-----------------------");
+
+            var authUrl = baseUrl;
+            if (!authUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
+            {
+                authUrl = authUrl + "/Avtentikacija";
+            }
+
+            var requestBody = new
+            {
+                username = vascoApiUporabnik,
+                password = vascoApiGeslo,
+                taxNumber = vascoApiDavcna,
+                year = 0,
+                returnPastYears = true,
+                @params = new { }
+            };
+
+            var jsonBody = System.Text.Json.JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(jsonBody, System.Text.Encoding.UTF8, "application/json");
+
+            Log($"  URL: {authUrl}");
+            Log($"  Uporabnik: {vascoApiUporabnik}");
+            Log($"  Davčna: {vascoApiDavcna}");
+            Log("  Pošiljam zahtevo...");
+
+            httpClient.DefaultRequestHeaders.Accept.Clear();
+            httpClient.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var response = await httpClient.PostAsync(authUrl, content);
+            stopwatch.Stop();
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            Log($"  Status: {(int)response.StatusCode} ({response.StatusCode})");
+            Log($"  Čas: {stopwatch.ElapsedMilliseconds} ms");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Log($"  NAPAKA: Avtentikacija ni uspela!");
+                Log($"  Odgovor: {responseContent}");
+                Log("");
+                Log("-----------------------------------------------------------");
+                Log("REZULTAT: NAPAKA - Avtentikacija ni uspela");
+                Log("-----------------------------------------------------------");
+                return;
+            }
+
+            // Pridobi token
+            string? token = null;
+            try
+            {
+                var authJsonDoc = System.Text.Json.JsonDocument.Parse(responseContent);
+                string[] tokenNames = { "apiKey", "ApiKey", "token", "Token", "access_token", "accessToken", "jwt", "JWT", "jwtToken", "authToken" };
+                foreach (var name in tokenNames)
+                {
+                    if (authJsonDoc.RootElement.TryGetProperty(name, out var tokenElement) && tokenElement.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        token = tokenElement.GetString();
+                        if (!string.IsNullOrWhiteSpace(token))
+                        {
+                            Log($"  Token najden v polju: {name}");
+                            break;
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Log($"  NAPAKA: Token ni bil najden v odgovoru!");
+                Log($"  Odgovor: {responseContent}");
+                Log("");
+                Log("-----------------------------------------------------------");
+                Log("REZULTAT: NAPAKA - Token ni najden");
+                Log("-----------------------------------------------------------");
+                return;
+            }
+
+            Log($"  USPEŠNO: Token pridobljen ({token.Length} znakov)");
+
+            // KORAK 2: KLIC /FA/racun
+            Log("");
+            Log("KORAK 2: KLIC /FA/racun");
+            Log("------------------------");
+
+            var datumOd = new DateTime(2026, 1, 1);
+            var datumDo = new DateTime(2026, 1, 10);
+            var stevilkaOd = "1.2026";
+            var stevilkaDo = "2.2026";
+
+            var racunBaseUrl = baseUrl;
+            if (racunBaseUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
+            {
+                racunBaseUrl = racunBaseUrl.Substring(0, racunBaseUrl.Length - "/Avtentikacija".Length);
+            }
+
+            var racunUrl = racunBaseUrl.Contains("/api/v1", StringComparison.OrdinalIgnoreCase)
+                ? $"{racunBaseUrl}/FA/racun?DatumOd={datumOd:yyyy-MM-dd}&DatumDo={datumDo:yyyy-MM-dd}&StevilkaOd={stevilkaOd}&StevilkaDo={stevilkaDo}"
+                : $"{racunBaseUrl}/api/v1/FA/racun?DatumOd={datumOd:yyyy-MM-dd}&DatumDo={datumDo:yyyy-MM-dd}&StevilkaOd={stevilkaOd}&StevilkaDo={stevilkaDo}";
+
+            Log($"  URL: {racunUrl}");
+            Log($"  DatumOd: {datumOd:dd.MM.yyyy}");
+            Log($"  DatumDo: {datumDo:dd.MM.yyyy}");
+            Log($"  StevilkaOd: {stevilkaOd}");
+            Log($"  StevilkaDo: {stevilkaDo}");
+            Log("  Pošiljam zahtevo...");
+
+            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            stopwatch.Restart();
+            var racunResponse = await httpClient.GetAsync(racunUrl);
+            stopwatch.Stop();
+
+            var racunContent = await racunResponse.Content.ReadAsStringAsync();
+
+            Log($"  Status: {(int)racunResponse.StatusCode} ({racunResponse.StatusCode})");
+            Log($"  Čas: {stopwatch.ElapsedMilliseconds} ms");
+
+            int count = 0;
+            if (!string.IsNullOrWhiteSpace(racunContent))
+            {
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);
+                    if (jsonDoc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        count = jsonDoc.RootElement.GetArrayLength();
+                    }
+                }
+                catch { }
+            }
+
+            Log("");
+            Log($"ŠTEVILO RAČUNOV: {count}");
+            Log("");
+            Log("VSEBINA ODGOVORA:");
+            if (string.IsNullOrWhiteSpace(racunContent))
+            {
+                Log("  (prazna vsebina)");
+            }
+            else
+            {
+                try
+                {
+                    var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);
+                    var formattedJson = System.Text.Json.JsonSerializer.Serialize(jsonDoc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    foreach (var line in formattedJson.Split('\n'))
+                    {
+                        Log($"  {line.TrimEnd('\r')}");
+                    }
+                }
+                catch
+                {
+                    var displayContent = racunContent.Length > 2000
+                        ? racunContent.Substring(0, 2000) + $"... (prikazano 2000/{racunContent.Length} znakov)"
+                        : racunContent;
+                    foreach (var line in displayContent.Split('\n'))
+                    {
+                        Log($"  {line.TrimEnd('\r')}");
+                    }
+                }
+            }
+
+            Log("");
+            if (racunResponse.IsSuccessStatusCode)
+            {
+                Log("-----------------------------------------------------------");
+                Log($"REZULTAT: USPEŠNO - Pridobljenih {count} računov");
+                Log("-----------------------------------------------------------");
+            }
+            else
+            {
+                Log("-----------------------------------------------------------");
+                Log($"REZULTAT: NAPAKA - Strežnik vrnil status {(int)racunResponse.StatusCode}");
+                Log("-----------------------------------------------------------");
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            Log("");
+            Log("-----------------------------------------------------------");
+            Log("REZULTAT: NAPAKA - Časovna omejitev (timeout) je potekla!");
+            Log("-----------------------------------------------------------");
+        }
+        catch (HttpRequestException ex)
+        {
+            Log("");
+            Log("NAPAKA HTTP ZAHTEVE:");
+            Log($"  Sporočilo: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                Log($"  Notranja napaka: {ex.InnerException.Message}");
+            }
+            Log("");
+            Log("-----------------------------------------------------------");
+            Log("REZULTAT: NAPAKA - Ni mogoče vzpostaviti povezave!");
+            Log("-----------------------------------------------------------");
+        }
+        catch (Exception ex)
+        {
+            Log("");
+            Log("NEPRIČAKOVANA NAPAKA:");
+            Log($"  Tip: {ex.GetType().Name}");
+            Log($"  Sporočilo: {ex.Message}");
+            Log("");
+            Log("-----------------------------------------------------------");
+            Log("REZULTAT: NAPAKA");
+            Log("-----------------------------------------------------------");
+        }
+        finally
+        {
+            isTesting = false;
+            testButtonText = "Test";
+        }
+    }
+
+    void OnFakturaVascoApi()
+    {
+        // TODO: implementacija fakture VASCO API
+    }
+}

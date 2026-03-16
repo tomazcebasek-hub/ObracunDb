@@ -1,0 +1,278 @@
+@page "/koriscenje-predracuni"
+@rendermode InteractiveServer
+@using FirebirdSql.Data.FirebirdClient
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@inject ObracunDb.Data.FirebirdConnectionManager ConnectionManager
+@inject ObracunDb.Services.AuthService AuthService
+@inject ObracunDb.Services.ParametriService Parametri
+@inject NavigationManager NavigationManager
+
+<PageTitle>Koriščenje predračunov</PageTitle>
+
+@if (true)
+{
+    <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+            <h5 style="margin: 0;">Koriščenje predračunov — @paramMesec/@paramLeto</h5>
+            @if (isLoading)
+            {
+                <span class="text-muted">Nalagam...</span>
+            }
+            @if (partnerji.Count > 0)
+            {
+                <DxButton Text="XLS" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnExportXls" />
+            }
+        </div>
+
+        @if (partnerji.Count > 0)
+        {
+            <div style="flex: 1; overflow: hidden; min-height: 0;">
+                <DxGrid Data="@partnerji"
+                        KeyFieldName="@nameof(KoriscenjePredracuniDto.Partner)"
+                        ShowFilterRow="true"
+                        CssClass="w-100"
+                        PageSize="0"
+                        VirtualScrollingEnabled="true"
+                        style="height: 100%">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Partner)" Caption="Šifra" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.NazivPartnerja)" Caption="Partner" MinWidth="140" />
+                        @* Predračuni preteklega meseca *@
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretVse)" Caption="@pretCapVse" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretPreteklo)" Caption="@pretCapPret" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretMesec)" Caption="@pretCapMes" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretPreostalo)" Caption="@pretCapPreost" Width="100px" />
+                        @* Predračuni trenutnega meseca *@
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TreVse)" Caption="@treCapVse" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TrePreteklo)" Caption="@treCapPret" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TreMesec)" Caption="@treCapMes" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TrePreostalo)" Caption="@treCapPreost" Width="100px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(KoriscenjePredracuniDto.Partner)" DisplayText="Partnerjev: {0}" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretVse)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretPreteklo)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretMesec)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretPreostalo)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TreVse)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TrePreteklo)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TreMesec)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TrePreostalo)" />
+                    </TotalSummary>
+                </DxGrid>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    bool isLoading;
+    int paramMesec;
+    int paramLeto;
+    int pretMesec;
+    int pretLeto;
+    List<KoriscenjePredracuniDto> partnerji = new();
+
+    string pretCapVse = "";
+    string pretCapPret = "";
+    string pretCapMes = "";
+    string pretCapPreost = "";
+    string treCapVse = "";
+    string treCapPret = "";
+    string treCapMes = "";
+    string treCapPreost = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        paramMesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+        paramLeto = Parametri.GetInt(ObracunParam.LetoObracuna);
+        var pretDatum = new DateTime(paramLeto, paramMesec, 1).AddMonths(-1);
+        pretMesec = pretDatum.Month;
+        pretLeto = pretDatum.Year;
+
+        var pretLabel = $"{pretMesec}.{pretLeto % 100}";
+        var treLabel = $"{paramMesec}.{paramLeto % 100}";
+        pretCapVse = $"{pretLabel} Vse";
+        pretCapPret = $"{pretLabel} Pret.";
+        pretCapMes = $"{pretLabel} Mes.";
+        pretCapPreost = $"{pretLabel} Preost.";
+        treCapVse = $"{treLabel} Vse";
+        treCapPret = $"{treLabel} Pret.";
+        treCapMes = $"{treLabel} Mes.";
+        treCapPreost = $"{treLabel} Preost.";
+
+        await NaloziPodatke();
+    }
+
+    void OnExportXls()
+    {
+        NavigationManager.NavigateTo("/api/export/koriscenje-predracuni", forceLoad: true);
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+        partnerji.Clear();
+
+        try
+        {
+            await using var connection = ConnectionManager.GetConnection();
+            await connection.OpenAsync();
+
+            // 1. Paket minute slovar
+            var paketMinute = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            await using (var cmd = new FbCommand("SELECT TRIM(ARTIKEL), MINUT FROM OBRACUN_PAKET_MINUTE", connection))
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    paketMinute[reader.GetString(0)] = reader.GetInt32(1);
+            }
+
+            if (paketMinute.Count == 0) return;
+
+            var sifraIn = string.Join(",", paketMinute.Keys.Select(s => "'" + s.Replace("'", "''") + "'"));
+
+            // Datumski razpon: pretekli mesec + trenutni mesec
+            var datumOd = new DateTime(pretLeto, pretMesec, 1);
+            var datumDo = new DateTime(paramLeto, paramMesec, 1).AddMonths(1).AddDays(-1);
+
+            // 2. "Vse" minute iz predračunov (status=5 ali plačani) × paket minute
+            //    Ključ: (pretekli mesec, trenutni mesec)
+            var vseMinute = new Dictionary<int, (int Pret, int Tre)>();
+
+            var sqlVse = "SELECT fp.SIFRA_KUPCA, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), TRIM(k.SIFRA), CAST(k.KOLICINA AS INTEGER)"
+                + " FROM FA_PREDRACUN fp"
+                + " JOIN FA_PREDRACUN_KNJIZBA k ON k.STEVILKA = fp.STEVILKA AND k.LETO = fp.LETO"
+                + $" WHERE fp.DATUM >= '{datumOd:yyyy-MM-dd}' AND fp.DATUM <= '{datumDo:yyyy-MM-dd}'"
+                + " AND TRIM(k.SIFRA) IN (" + sifraIn + ")"
+                + " AND ("
+                + "   fp.STANJE IN (2, 5)"
+                + "   OR EXISTS ("
+                + "     SELECT 1 FROM FA_RACUN_PLACILO rp"
+                + "     WHERE rp.PREDRACUN_STEVILKA = fp.STEVILKA AND rp.PREDRACUN_LETO = fp.LETO"
+                + "       AND (rp.ZNESEK + COALESCE(rp.SCONTO, 0)) > 0"
+                + "   )"
+                + " )";
+
+            await using (var cmd = new FbCommand(sqlVse, connection))
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var partner = reader.GetInt32(0);
+                    var predLetoVal = reader.GetInt32(1);
+                    var predMesecVal = reader.GetInt32(2);
+                    var sifra = reader.GetString(3);
+                    var kol = reader.GetInt32(4);
+
+                    if (!paketMinute.TryGetValue(sifra, out var minutNaArtikel)) continue;
+                    var minute = kol * minutNaArtikel;
+
+                    bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
+                    bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
+
+                    vseMinute.TryGetValue(partner, out var existing);
+                    if (jePret)
+                        vseMinute[partner] = (existing.Pret + minute, existing.Tre);
+                    else if (jeTre)
+                        vseMinute[partner] = (existing.Pret, existing.Tre + minute);
+                }
+            }
+
+            // 3. Koriščene minute iz OBRACUN_PORABA_MINUT (TIP=1)
+            //    JOIN na FA_PREDRACUN za datum predračuna, da ločimo pretekli/trenutni mesec
+            var korPreteklo = new Dictionary<int, (int Pret, int Tre)>();
+            var korMesec = new Dictionary<int, (int Pret, int Tre)>();
+
+            await using (var cmd = new FbCommand(@"
+                SELECT pm.PARTNER,
+                       EXTRACT(YEAR FROM fp.DATUM) AS PRED_LETO,
+                       EXTRACT(MONTH FROM fp.DATUM) AS PRED_MESEC,
+                       pm.MESEC, pm.LETO,
+                       SUM(pm.KOLICINA) AS SKUPAJ
+                FROM OBRACUN_PORABA_MINUT pm
+                JOIN FA_PREDRACUN fp ON fp.STEVILKA = pm.PREDRACUN_STEVILKA AND fp.LETO = pm.PREDRACUN_LETO
+                WHERE pm.TIP = 1
+                  AND fp.DATUM >= @DatumOd AND fp.DATUM <= @DatumDo
+                GROUP BY pm.PARTNER, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), pm.MESEC, pm.LETO", connection))
+            {
+                cmd.Parameters.AddWithValue("@DatumOd", datumOd);
+                cmd.Parameters.AddWithValue("@DatumDo", datumDo);
+
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    var partner = reader.GetInt32(0);
+                    var predLetoVal = reader.GetInt32(1);
+                    var predMesecVal = reader.GetInt32(2);
+                    var porMesec = reader.GetInt32(3);
+                    var porLeto = reader.GetInt32(4);
+                    var skupaj = reader.GetInt32(5);
+
+                    bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
+                    bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
+                    if (!jePret && !jeTre) continue;
+
+                    bool jePretekloObdobje = porLeto < paramLeto || (porLeto == paramLeto && porMesec < paramMesec);
+                    bool jeMesecObdobje = porLeto == paramLeto && porMesec == paramMesec;
+
+                    if (jePretekloObdobje)
+                    {
+                        korPreteklo.TryGetValue(partner, out var ex);
+                        if (jePret) korPreteklo[partner] = (ex.Pret + skupaj, ex.Tre);
+                        else korPreteklo[partner] = (ex.Pret, ex.Tre + skupaj);
+                    }
+                    else if (jeMesecObdobje)
+                    {
+                        korMesec.TryGetValue(partner, out var ex);
+                        if (jePret) korMesec[partner] = (ex.Pret + skupaj, ex.Tre);
+                        else korMesec[partner] = (ex.Pret, ex.Tre + skupaj);
+                    }
+                }
+            }
+
+            // 4. Nazivi partnerjev — samo partnerji s porabo v tekočem mesecu
+            var vsiPartnerji = korMesec.Keys.ToList();
+
+            var nazivi = new Dictionary<int, string?>();
+            if (vsiPartnerji.Count > 0)
+            {
+                var partnerIn = string.Join(",", vsiPartnerji);
+                await using var cmd = new FbCommand($"SELECT SIFRA, NAZIV FROM PARTNER WHERE SIFRA IN ({partnerIn})", connection);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    nazivi[reader.GetInt32(0)] = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+            }
+
+            // 5. Sestavi rezultat
+            foreach (var partner in vsiPartnerji.OrderBy(p => nazivi.GetValueOrDefault(p) ?? "").ThenBy(p => p))
+            {
+                vseMinute.TryGetValue(partner, out var vse);
+                korPreteklo.TryGetValue(partner, out var pret);
+                korMesec.TryGetValue(partner, out var mes);
+
+                partnerji.Add(new KoriscenjePredracuniDto
+                {
+                    Partner = partner,
+                    NazivPartnerja = nazivi.GetValueOrDefault(partner),
+                    PretVse = vse.Pret,
+                    PretPreteklo = pret.Pret,
+                    PretMesec = mes.Pret,
+                    TreVse = vse.Tre,
+                    TrePreteklo = pret.Tre,
+                    TreMesec = mes.Tre
+                });
+            }
+        }
+        catch
+        {
+            partnerji.Clear();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

@@ -1,0 +1,101 @@
+@page "/predracuni"
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject PredracunService PredracunService
+@inject NavigationManager Navigation
+
+<PageTitle>Predraèuni</PageTitle>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+    <div style="flex:1; min-height:0;">
+    <DxGrid @ref="grid"
+            Data="@filteredPredracuni"
+            KeyFieldName="@nameof(PredracunGridDto.Key)"
+            ShowFilterRow="true"
+            PageSize="int.MaxValue"
+            PagerVisible="false"
+            CssClass="w-100 h-100">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Stevilka)" Caption="Številka" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Leto)" Caption="Leto" Width="80px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.SifraKupca)" Caption="Šifra" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.NazivPartnerja)" Caption="Naziv partnerja" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekKoncni)" Caption="Znesek" DisplayFormat="N2" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Placano)" Caption="Plaèano" DisplayFormat="N2" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.PlacanoIzRacunov)" Caption="PlaèRaè" DisplayFormat="N2" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.RacunStatus)" Caption="Raèun" Width="150px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Stanje" Width="120px" />
+        </Columns>
+        <DetailRowTemplate Context="dataItem">
+            @{
+                var predracun = (PredracunGridDto)dataItem.DataItem;
+            }
+            <DetailGridComponent Stevilka="@predracun.Stevilka" Leto="@predracun.Leto" />
+        </DetailRowTemplate>
+    </DxGrid>
+    </div>
+
+    <div class="d-flex gap-2 align-items-center" style="flex-shrink:0; padding:8px 0;">
+        <DxButton Text="Potrjen in ni raèuna" 
+                  Click="@ApplyQuickFilter" 
+                  RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="X" 
+                  Click="@ClearFilters" 
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+        <DxButton Text="Statistika" 
+                  Click="@(() => Navigation.NavigateTo("/statistika"))" 
+                  RenderStyle="ButtonRenderStyle.Info" />
+    </div>
+    </div>
+}
+
+@code {
+    IGrid? grid;
+    List<PredracunGridDto>? predracuni;
+    List<PredracunGridDto>? filteredPredracuni;
+    bool isLoading = true;
+    bool isFilterActive = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            predracuni = await PredracunService.GetAllPredracuniAsync();
+            filteredPredracuni = predracuni;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    void ApplyQuickFilter()
+    {
+        if (predracuni != null)
+        {
+            filteredPredracuni = predracuni
+                .Where(p => (p.Stanje == 2 || p.Stanje == 5) && string.IsNullOrEmpty(p.RacunStatus))
+                .ToList();
+            isFilterActive = true;
+        }
+    }
+
+    void ClearFilters()
+    {
+        filteredPredracuni = predracuni;
+        isFilterActive = false;
+    }
+}

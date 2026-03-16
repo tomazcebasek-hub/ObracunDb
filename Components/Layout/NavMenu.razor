@@ -1,0 +1,83 @@
+﻿@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject NavigationManager NavigationManager
+@inject AuthService AuthService
+@implements IDisposable
+
+<div>
+    <DxMenu Orientation="@Orientation.Vertical" CssClass="menu">
+        <Items>
+            @*<DxMenuItem NavigateUrl="/" Text="Home" CssClass="@MenuItemCssClass("/")" IconCssClass="icon icon-home"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/counter" Text="Counter" CssClass="@MenuItemCssClass("/counter")" IconCssClass="icon icon-counter"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/weather" Text="Weather" CssClass="@MenuItemCssClass("/weather")" IconCssClass="icon icon-weather"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/chart" Text="Chart" CssClass="@MenuItemCssClass("/chart")" IconCssClass="icon icon-chart"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/pdfviewer" Text="PDF Viewer" CssClass="@MenuItemCssClass("/pdfviewer")" IconCssClass="icon icon-pdf-viewer"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/pivottable" Text="Pivot Table" CssClass="@MenuItemCssClass("/pivottable")" IconCssClass="icon icon-pivot-table"></DxMenuItem>*@
+            <DxMenuItem NavigateUrl="/potrjevanje" Text="Potrjevanje nalogov" CssClass="@MenuItemCssClass("/potrjevanje")" IconCssClass="icon icon-calendar"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/pregled-nalogov" Text="Pregled nalogov" CssClass="@MenuItemCssClass("/pregled-nalogov")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
+            <DxMenuItem Text="Obračun" IconCssClass="icon icon-scheduler">
+                <Items>
+                    <DxMenuItem NavigateUrl="/izvedi-obracun" Text="Izvedi obračun" CssClass="@MenuItemCssClass("/izvedi-obracun")" IconCssClass="icon icon-scheduler"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/koriscenje-predracuni" Text="Koriščenje predračunov" CssClass="@MenuItemCssClass("/koriscenje-predracuni")" IconCssClass="icon icon-chart"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/sestevek" Text="Seštevek" CssClass="@MenuItemCssClass("/sestevek")" IconCssClass="icon icon-counter"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/osnutki" Text="Osnutki" CssClass="@MenuItemCssClass("/osnutki")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/zapis-v-faw" Text="Zapis v FAW" CssClass="@MenuItemCssClass("/zapis-v-faw")" IconCssClass="icon icon-scheduler"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/zakljucek" Text="Zaključek meseca" CssClass="@MenuItemCssClass("/zakljucek")" IconCssClass="icon icon-counter"></DxMenuItem>
+                </Items>
+            </DxMenuItem>
+            <DxMenuItem NavigateUrl="/partnerji" Text="Partnerji" CssClass="@MenuItemCssClass("/partnerji")" IconCssClass="icon icon-tree-list"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/predracuni" Text="Predračuni" CssClass="@MenuItemCssClass("/predracuni")" IconCssClass="icon icon-scheduler"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/paketi" Text="Paketi" CssClass="@MenuItemCssClass("/paketi")" IconCssClass="icon icon-counter"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/partner-minute" Text="Partner minute" CssClass="@MenuItemCssClass("/partner-minute")" IconCssClass="icon icon-chart"></DxMenuItem>
+            @if (IsAdminOrVodja)
+            {
+                <DxMenuItem NavigateUrl="/nastavitve" Text="Nastavitve" CssClass="@MenuItemCssClass("/nastavitve")" IconCssClass="icon icon-settings"></DxMenuItem>
+            }
+            <DxMenuItem NavigateUrl="/loceni-racuni" Text="Ločeni računi" CssClass="@MenuItemCssClass("/loceni-racuni")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/parametri" Text="Barva ozadja" CssClass="@MenuItemCssClass("/parametri")" IconCssClass="icon icon-settings"></DxMenuItem>
+            <DxMenuItem NavigateUrl="/utility" Text="Utility" CssClass="@MenuItemCssClass("/utility")" IconCssClass="icon icon-counter"></DxMenuItem>
+            @if (IsAdminOrVodja)
+            {
+                <DxMenuItem NavigateUrl="/uporabniki" Text="Uporabniki" CssClass="@MenuItemCssClass("/uporabniki")" IconCssClass="icon icon-tree-list"></DxMenuItem>
+            }
+            @if (AuthService.JeDirektor)
+            {
+                <DxMenuItem NavigateUrl="/revizijska-sled" Text="Revizijska sled" CssClass="@MenuItemCssClass("/revizijska-sled")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
+            }
+            @*<DxMenuItem NavigateUrl="/scheduler" Text="Scheduler" CssClass="@MenuItemCssClass("/scheduler")" IconCssClass="icon icon-scheduler"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/treelist" Text="TreeList" CssClass="@MenuItemCssClass("/treelist")" IconCssClass="icon icon-tree-list"></DxMenuItem>*@
+            @*<DxMenuItem NavigateUrl="/parametri" Text="Uporabniški parametri" CssClass="@MenuItemCssClass("/parametri")" IconCssClass="icon icon-settings"></DxMenuItem>*@
+        </Items>
+    </DxMenu>
+</div>
+
+@code {
+    private string? currentLocalPath;
+
+    bool IsAdminOrVodja
+    {
+        get
+        {
+            var user = AuthService.CurrentUser;
+            return user != null && (user.VlogaEnum == UporabnikVloga.Admin || user.VlogaEnum == UporabnikVloga.Vodja);
+        }
+    }
+
+    protected override void OnInitialized() {
+        currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
+        currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string? MenuItemCssClass(string itemPath) {
+        return string.Equals(currentLocalPath, itemPath, StringComparison.OrdinalIgnoreCase) ? "menu-item-active" : null;
+    }
+
+    public void Dispose() {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+}

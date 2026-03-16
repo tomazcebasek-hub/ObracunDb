@@ -1,0 +1,57 @@
+@using ObracunDb.Data
+@inject MigrationStatus MigrationStatus
+
+@if (MigrationStatus.HasError || MigrationStatus.Log.Count > 0)
+{
+    <div class="connection-error-overlay">
+        <div class="connection-error-card" style="max-width: 900px;">
+            @if (MigrationStatus.HasError)
+            {
+                <div class="error-icon">!</div>
+                <h2>Napaka migracije baze</h2>
+                <p class="error-subtitle">
+                    Pri izvajanju migracij je prislo do napake.
+                </p>
+
+                <div class="error-message-box">
+                    <div class="error-message-label">Napaka:</div>
+                    <div class="error-message-text">@MigrationStatus.ErrorMessage</div>
+                </div>
+            }
+
+            @if (MigrationStatus.Log.Count > 0)
+            {
+                <div style="margin-top: 16px;">
+                    <div class="error-message-label">Podroben log migracij:</div>
+                    <div style="background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', 'Courier New', monospace; 
+                                font-size: 12px; padding: 12px 16px; border-radius: 6px; 
+                                max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 8px;">
+                        @foreach (var line in MigrationStatus.Log)
+                        {
+                            @if (line.Contains("NAPAKA") || line.Contains("NAPAKA"))
+                            {
+                                <div style="color: #f44336;">@line</div>
+                            }
+                            else if (line.Contains("OK") || line.Contains("USPESNA"))
+                            {
+                                <div style="color: #4caf50;">@line</div>
+                            }
+                            else if (line.Contains("SQL:"))
+                            {
+                                <div style="color: #64b5f6;">@line</div>
+                            }
+                            else if (line.Contains("---"))
+                            {
+                                <div style="color: #ffb74d; font-weight: bold; margin-top: 4px;">@line</div>
+                            }
+                            else
+                            {
+                                <div>@line</div>
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}

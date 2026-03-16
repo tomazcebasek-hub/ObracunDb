@@ -1,0 +1,188 @@
+@page "/sprememba-gesla"
+@layout EmptyLayout
+@using ObracunDb.Services
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Sprememba gesla</PageTitle>
+
+<style>
+    .change-pw-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+
+    .change-pw-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        padding: 48px;
+        width: 100%;
+        max-width: 440px;
+    }
+
+    .change-pw-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+        border-radius: 16px;
+        margin: 0 auto 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+    }
+
+    .change-pw-title {
+        font-size: 28px;
+        font-weight: 600;
+        color: #1a202c;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    .change-pw-subtitle {
+        font-size: 15px;
+        color: #718096;
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+    .form-label {
+        font-size: 14px;
+        font-weight: 500;
+        color: #2d3748;
+        margin-bottom: 8px;
+        display: block;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+    }
+
+    .change-pw-button {
+        width: 100%;
+        height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+        border-radius: 8px;
+    }
+
+    .error-message {
+        background-color: #fff5f5;
+        border: 1px solid #feb2b2;
+        color: #c53030;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-bottom: 24px;
+    }
+</style>
+
+<div class="change-pw-container">
+    <div class="change-pw-card">
+        <div class="change-pw-icon">
+            ??
+        </div>
+
+        <h1 class="change-pw-title">Sprememba gesla</h1>
+        <p class="change-pw-subtitle">Ob prvi prijavi morate spremeniti geslo.</p>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="error-message">
+                @errorMessage
+            </div>
+        }
+
+        <div class="form-group">
+            <label class="form-label">Novo geslo</label>
+            <DxTextBox @bind-Text="@novoGeslo"
+                       BindValueMode="BindValueMode.OnInput"
+                       Password="true"
+                       @onkeydown="HandleKeyDown"
+                       NullText="Vnesite novo geslo"
+                       CssClass="w-100" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Ponovite geslo</label>
+            <DxTextBox @bind-Text="@ponoviGeslo"
+                       BindValueMode="BindValueMode.OnInput"
+                       Password="true"
+                       @onkeydown="HandleKeyDown"
+                       NullText="Ponovite novo geslo"
+                       CssClass="w-100" />
+        </div>
+
+        <DxButton Text="Shrani geslo"
+                  Click="HandleChangePassword"
+                  RenderStyle="ButtonRenderStyle.Primary"
+                  CssClass="change-pw-button" />
+    </div>
+</div>
+
+@code {
+    string novoGeslo = "";
+    string ponoviGeslo = "";
+    string errorMessage = "";
+
+    protected override void OnInitialized()
+    {
+        if (!AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        if (!AuthService.MustChangePassword)
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+
+    async Task HandleChangePassword()
+    {
+        errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(novoGeslo))
+        {
+            errorMessage = "Geslo ne sme biti prazno.";
+            return;
+        }
+
+        if (novoGeslo.Length < 4)
+        {
+            errorMessage = "Geslo mora imeti vsaj 4 znake.";
+            return;
+        }
+
+        if (novoGeslo != ponoviGeslo)
+        {
+            errorMessage = "Gesli se ne ujemata.";
+            return;
+        }
+
+        if (await AuthService.ChangePasswordAsync(novoGeslo))
+        {
+            Navigation.NavigateTo("/");
+        }
+        else
+        {
+            errorMessage = "Napaka pri spremembi gesla.";
+        }
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await HandleChangePassword();
+        }
+    }
+}

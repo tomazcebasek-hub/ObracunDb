@@ -1,0 +1,410 @@
+@page "/partnerji"
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@using Microsoft.AspNetCore.Components.Sections
+@inject PartnerService PartnerService
+
+<PageTitle>Partnerji</PageTitle>
+<SectionContent SectionName="PageHeaderExtra">
+    <DxButton Text="@leto.ToString()" Click="@(() => letoPopupVisible = true)"
+              RenderStyle="ButtonRenderStyle.Secondary" SizeMode="SizeMode.Small" CssClass="ms-2" />
+</SectionContent>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <!-- Zgornji del 40% -->
+    <div style="height: 40vh; overflow: auto;">
+        <DxGrid @ref="partnerGrid"
+                Data="@partnerji"
+                KeyFieldName="@nameof(PartnerGridDto.Sifra)"
+                PageSize="int.MaxValue"
+                PagerVisible="false"
+                ShowFilterRow="true"
+                FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+                FilterPanelDisplayMode="GridFilterPanelDisplayMode.Always"
+                FocusedRowEnabled="true"
+                FocusedRowChanged="@OnPartnerSelected"
+                CssClass="w-100 h-100">
+            <Columns>
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.Sifra)" Caption="Šifra" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.Naziv)" Caption="Naziv" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.SkupniZnesekRacunov)" Caption="Znesek raèunov" DisplayFormat="N2" Width="150px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.Blago)" Caption="Blago" DisplayFormat="N2" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.BlagoNab)" Caption="BlagoRazl" DisplayFormat="N2" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.Storitve)" Caption="Storitve" DisplayFormat="N2" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.Skupaj)" Caption="Skupaj" DisplayFormat="N2" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.SteviloNalogov)" Caption="Št. nalogov" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.UreObr)" Caption="Min obr" DisplayFormat="N0" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.UreNeobr)" Caption="Min neobr" DisplayFormat="N0" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.NaUro)" Caption="NaUro" DisplayFormat="N0" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.SteviloPogodb)" Caption="Pogodbe" Width="80px">
+                    <CellDisplayTemplate>@{ var v = ((PartnerGridDto)context.DataItem).SteviloPogodb; if (v > 0) { @v } }</CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(PartnerGridDto.PogodbeneMinute)" Caption="Pog. min" DisplayFormat="N0" Width="80px" />
+            </Columns>
+            <TotalSummary>
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PartnerGridDto.Sifra)" DisplayText="Partnerjev: {0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.SkupniZnesekRacunov)" DisplayText="{0:N2}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.Blago)" DisplayText="{0:N2}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.BlagoNab)" DisplayText="{0:N2}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.Storitve)" DisplayText="{0:N2}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.Skupaj)" DisplayText="{0:N2}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.SteviloNalogov)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.UreObr)" DisplayText="{0:N0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerGridDto.UreNeobr)" DisplayText="{0:N0}" />
+            </TotalSummary>
+        </DxGrid>
+    </div>
+
+    <hr class="my-2" />
+
+    <!-- Spodnji del 55% -->
+    <div style="height: 55vh; display: flex; gap: 8px;">
+        <!-- Levi del - zavihki -->
+        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+            @if (selectedPartner.HasValue)
+            {
+                <DxTabs ActiveTabIndex="@activeTabIndex" ActiveTabIndexChanged="@OnTabChanged">
+                    <DxTab Text="Raèuni" />
+                    <DxTab Text="Nalogi" />
+                    <DxTab Text="Pogodbe" />
+                </DxTabs>
+
+                <div style="flex: 1; overflow: auto;">
+
+                @if (activeTabIndex == 0)
+                {
+                    <DxGrid Data="@racuni"
+                            KeyFieldName="@nameof(PartnerRacunDto.Key)"
+                            ShowAllRows="true"
+                            FocusedRowEnabled="true"
+                            FocusedRowChanged="@OnRacunSelected"
+                            ColumnResizeMode="GridColumnResizeMode.NextColumn"
+                            CssClass="w-100 mt-1">
+
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.Stevilka)" Caption="Številka" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.ZnesekKoncni)" Caption="Znesek" DisplayFormat="N2" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.Blago)" Caption="Blago" DisplayFormat="N2" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.BlagoNab)" Caption="BlagoRazl" DisplayFormat="N2" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.Storitve)" Caption="Storitve" DisplayFormat="N2" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.Skupaj)" Caption="Skupaj" DisplayFormat="N2" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerRacunDto.TipRacuna)" Caption="Tip" Width="40px" />
+                            <DxGridCommandColumn Width="40px" NewButtonVisible="false" EditButtonVisible="false" DeleteButtonVisible="false">
+                                <CellDisplayTemplate>
+                                    @{
+                                        var r = (PartnerRacunDto)context.DataItem;
+                                        <DxButton Text="?" Click="@(() => ShowDebug(r.Stevilka, r.Leto, r.TipRacuna))"
+                                                  RenderStyle="ButtonRenderStyle.Light" SizeMode="SizeMode.Small" />
+                                    }
+                                </CellDisplayTemplate>
+                            </DxGridCommandColumn>
+                        </Columns>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PartnerRacunDto.Stevilka)" DisplayText="Raèunov: {0}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerRacunDto.ZnesekKoncni)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerRacunDto.Blago)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerRacunDto.BlagoNab)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerRacunDto.Storitve)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerRacunDto.Skupaj)" DisplayText="{0:N2}" />
+                        </TotalSummary>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 1)
+                {
+                    <DxGrid Data="@nalogi"
+                            KeyFieldName="@nameof(PartnerNalogDto.Stevilka)"
+                            ShowAllRows="true"
+                            ShowFilterRow="true"
+                            FocusedRowEnabled="true"
+                            FocusedRowChanged="@OnNalogSelected"
+                            CssClass="w-100 mt-1">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(PartnerNalogDto.Stevilka)" Caption="Številka" Width="120px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerNalogDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerNalogDto.Obracunan)" Caption="Obraèunan" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerNalogDto.Trajanje)" Caption="Trajanje" DisplayFormat="N0" Width="90px" />
+                        </Columns>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PartnerNalogDto.Stevilka)" DisplayText="Nalogov: {0}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerNalogDto.Trajanje)" DisplayText="{0:N0}" />
+                        </TotalSummary>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 2)
+                {
+                    <DxGrid Data="@pogodbe"
+                            KeyFieldName="@nameof(PartnerPogodbaDto.Key)"
+                            ShowAllRows="true"
+                            FocusedRowEnabled="true"
+                            FocusedRowChanged="@OnPogodbaSelected"
+                            CssClass="w-100 mt-1">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.StPogodbe)" Caption="Št. pogodbe" Width="120px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.PrviRacunOd)" Caption="Od" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.VeljaDo)" Caption="Velja do" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.NaKolikoMesecev)" Caption="Na mes." Width="70px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.StMinut)" Caption="Minute" Width="70px" />
+                            <DxGridDataColumn FieldName="@nameof(PartnerPogodbaDto.Opomba)" Caption="Opomba" />
+                        </Columns>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PartnerPogodbaDto.StPogodbe)" DisplayText="Pogodb: {0}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPogodbaDto.StMinut)" DisplayText="{0:N0}" />
+                        </TotalSummary>
+                    </DxGrid>
+                }
+                </div>
+            }
+            else
+            {
+                <p class="text-muted mt-2">Izberite partnerja v zgornjem gridu.</p>
+            }
+        </div>
+
+        <!-- Desni del -->
+        <div style="flex: 1; overflow: auto;">
+            @if (activeTabIndex == 0 && knjizbe.Count > 0)
+            {
+                <DxGrid Data="@knjizbe"
+                        KeyFieldName="@nameof(RacunKnjizbaDto.Zs)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.SifraArtikla)" Caption="Artikel" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Enota)" Caption="EM" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Kolicina)" Caption="Kolièina" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.ProdajnaVrednost)" Caption="Vrednost" DisplayFormat="N2" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Rabat1)" Caption="Rabat" DisplayFormat="N2" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.NetoVrednost)" Caption="Neto" DisplayFormat="N2" Width="100px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(RacunKnjizbaDto.ProdajnaVrednost)" DisplayText="{0:N2}" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(RacunKnjizbaDto.NetoVrednost)" DisplayText="{0:N2}" />
+                    </TotalSummary>
+                </DxGrid>
+            }
+            @if (activeTabIndex == 1 && selectedNalog != null)
+            {
+                <div class="p-2">
+                    <div class="mb-2"><strong>Serviser:</strong> @selectedNalog.Serviser</div>
+                    <div><strong>Opis:</strong></div>
+                    <pre style="font-size: 13px; white-space: pre-wrap;">@selectedNalog.Opis</pre>
+                </div>
+            }
+            @if (activeTabIndex == 2 && pogodbePozicije.Count > 0)
+            {
+                <DxGrid Data="@pogodbePozicije"
+                        KeyFieldName="@nameof(PogodbaPozicijaDto.Pozicija)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.SifraArtikla)" Caption="Artikel" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.Kolicina)" Caption="Kolièina" DisplayFormat="N2" Width="80px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.Meseci)" Caption="Meseci" Width="130px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozicijaDto.Rabat1)" Caption="Rabat" DisplayFormat="N2" Width="70px" />
+                    </Columns>
+                </DxGrid>
+            }
+        </div>
+    </div>
+}
+
+<DxPopup Visible="@debugPopupVisible"
+         VisibleChanged="@((bool v) => debugPopupVisible = v)"
+         HeaderText="Debug BlagoRazl"
+         Width="900px"
+         Height="600px"
+         ShowCloseButton="true"
+         CloseOnOutsideClick="true">
+    <BodyContentTemplate>
+        <pre style="font-size: 12px; overflow: auto; max-height: 500px;">@debugText</pre>
+    </BodyContentTemplate>
+</DxPopup>
+
+<DxPopup Visible="@letoPopupVisible"
+         VisibleChanged="@((bool v) => letoPopupVisible = v)"
+         HeaderText="Izberi leto"
+         Width="250px"
+         Height="180px"
+         ShowCloseButton="true"
+         CloseOnOutsideClick="true">
+    <BodyContentTemplate>
+        <div class="d-flex flex-column gap-2 p-2">
+            <DxSpinEdit @bind-Value="@novoLeto" MinValue="2000" MaxValue="2099" />
+            <DxButton Text="Potrdi" Click="@OnLetoConfirmed" RenderStyle="ButtonRenderStyle.Primary" />
+        </div>
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    List<PartnerGridDto>? partnerji;
+    IGrid partnerGrid;
+    List<PartnerRacunDto> racuni = new();
+    List<PartnerNalogDto> nalogi = new();
+    List<RacunKnjizbaDto> knjizbe = new();
+    List<PartnerPogodbaDto> pogodbe = new();
+    List<PogodbaPozicijaDto> pogodbePozicije = new();
+    bool isLoading = true;
+    string? errorMessage;
+    int? selectedPartner;
+    int activeTabIndex;
+    PartnerNalogDto? selectedNalog;
+    bool debugPopupVisible;
+    string debugText = "";
+    bool letoPopupVisible;
+    int leto = 2025;
+    int novoLeto = 2025;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            partnerji = await PartnerService.GetAllAsync(leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task OnLetoConfirmed()
+    {
+        letoPopupVisible = false;
+        leto = novoLeto;
+        await OnOsveziClicked();
+    }
+
+    async Task OnOsveziClicked()
+    {
+        isLoading = true;
+        errorMessage = null;
+        selectedPartner = null;
+        racuni = new();
+        nalogi = new();
+        knjizbe = new();
+        pogodbe = new();
+        pogodbePozicije = new();
+        selectedNalog = null;
+
+        try
+        {
+            partnerji = await PartnerService.GetAllAsync(leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task OnPartnerSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PartnerGridDto row)
+        {
+            selectedPartner = row.Sifra;
+            knjizbe = new();
+            pogodbePozicije = new();
+            await LoadTabData();
+        }
+    }
+
+    async Task OnTabChanged(int newIndex)
+    {
+        activeTabIndex = newIndex;
+        knjizbe = new();
+        pogodbePozicije = new();
+        selectedNalog = null;
+        await LoadTabData();
+    }
+
+    async Task OnRacunSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PartnerRacunDto racun)
+        {
+            try
+            {
+                knjizbe = await PartnerService.GetRacunKnjizbeAsync(racun.Stevilka, racun.Leto, racun.TipRacuna);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju knjižb: {ex.Message}";
+            }
+        }
+    }
+
+    void OnNalogSelected(GridFocusedRowChangedEventArgs e)
+    {
+        selectedNalog = e.DataItem as PartnerNalogDto;
+    }
+
+    async Task LoadTabData()
+    {
+        if (!selectedPartner.HasValue) return;
+
+        try
+        {
+            if (activeTabIndex == 0)
+                racuni = await PartnerService.GetRacuniAsync(selectedPartner.Value, leto);
+            else if (activeTabIndex == 1)
+                nalogi = await PartnerService.GetNalogiAsync(selectedPartner.Value, leto);
+            else if (activeTabIndex == 2)
+                pogodbe = await PartnerService.GetPogodbeAsync(selectedPartner.Value, leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri nalaganju: {ex.Message}";
+        }
+    }
+
+    async Task OnPogodbaSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PartnerPogodbaDto pogodba)
+        {
+            try
+            {
+                pogodbePozicije = await PartnerService.GetPogodbePozicijeAsync(pogodba.Stevilka, pogodba.Leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju postavk: {ex.Message}";
+            }
+        }
+    }
+
+    async Task ShowDebug(string stevilka, int leto, int tipRacuna)
+    {
+        try
+        {
+            debugText = await PartnerService.GetDebugBlagoRazlAsync(stevilka, leto, tipRacuna);
+            debugPopupVisible = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            debugText = $"Napaka: {ex.Message}\n{ex.StackTrace}";
+            debugPopupVisible = true;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

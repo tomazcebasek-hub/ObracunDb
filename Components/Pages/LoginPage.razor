@@ -1,0 +1,218 @@
+@page "/login"
+@layout EmptyLayout
+@using ObracunDb.Services
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject UserParametersService UserParams
+@inject ParametriService Parametri
+@inject ProtectedLocalStorage LocalStorage
+@inject ProtectedSessionStorage SessionStorage
+@implements IDisposable
+
+<PageTitle>Prijava</PageTitle>
+
+<style>
+    .login-container {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+    }
+
+    .login-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+        padding: 48px;
+        width: 100%;
+        max-width: 440px;
+    }
+
+    .login-logo {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+        border-radius: 16px;
+        margin: 0 auto 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        color: white;
+    }
+
+    .login-title {
+        font-size: 32px;
+        font-weight: 600;
+        color: #1a202c;
+        text-align: center;
+        margin-bottom: 12px;
+    }
+
+    .login-subtitle {
+        font-size: 16px;
+        color: #718096;
+        text-align: center;
+        margin-bottom: 40px;
+    }
+
+    .form-label {
+        font-size: 14px;
+        font-weight: 500;
+        color: #2d3748;
+        margin-bottom: 8px;
+        display: block;
+    }
+
+    .form-group {
+        margin-bottom: 24px;
+    }
+
+    .login-button {
+        width: 100%;
+        height: 48px;
+        font-size: 16px;
+        font-weight: 500;
+        border-radius: 8px;
+    }
+
+    .error-message {
+        background-color: #fff5f5;
+        border: 1px solid #feb2b2;
+        color: #c53030;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 14px;
+        margin-bottom: 24px;
+    }
+
+    .forgot-password {
+        text-align: right;
+        margin-top: -12px;
+        margin-bottom: 24px;
+    }
+
+    .forgot-password a {
+        font-size: 14px;
+        color: #4e73df;
+        text-decoration: none;
+    }
+
+    .forgot-password a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-logo">
+            ??
+        </div>
+        
+        <h1 class="login-title">ObraèunDb</h1>
+        <p class="login-subtitle">Prijavite se v sistem za upravljanje raèunov</p>
+        
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="error-message">
+                @errorMessage
+            </div>
+        }
+        
+        <div class="form-group">
+            <label class="form-label">Uporabniško ime</label>
+            <DxTextBox @bind-Text="@username" 
+                       BindValueMode="BindValueMode.OnInput"
+                       @onkeydown="HandleKeyDown"
+                       NullText="Vnesite uporabniško ime"
+                       CssClass="w-100" />
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">Geslo</label>
+            <DxTextBox @bind-Text="@password" 
+                       BindValueMode="BindValueMode.OnInput"
+                       Password="true" 
+                       @onkeydown="HandleKeyDown"
+                       NullText="Vnesite geslo"
+                       CssClass="w-100" />
+        </div>
+        
+        <div class="forgot-password">
+            <a href="#">Pozabljeno geslo?</a>
+        </div>
+        
+        <DxButton Text="Prijava" 
+                  Click="HandleLogin" 
+                  RenderStyle="ButtonRenderStyle.Primary" 
+                  CssClass="login-button" />
+    </div>
+</div>
+
+@code {
+    string username = "";
+    string password = "";
+    string errorMessage = "";
+
+    protected override void OnInitialized()
+    {
+        if (AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/");
+        }
+
+        AuthService.OnAuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    async Task HandleLogin()
+    {
+        errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        {
+            errorMessage = "Vnesite uporabniško ime in geslo.";
+            return;
+        }
+
+        if (await AuthService.LoginAsync(username, password))
+        {
+            await AuthService.SaveSessionAsync(LocalStorage, SessionStorage);
+            var user = AuthService.CurrentUser?.UporabniskoIme ?? "";
+            UserParams.SetTheme(Parametri.ImaTemnoOzadje(user));
+
+            if (AuthService.MustChangePassword)
+            {
+                Navigation.NavigateTo("/sprememba-gesla");
+            }
+            else
+            {
+                Navigation.NavigateTo("/");
+            }
+        }
+        else
+        {
+            errorMessage = "Napaèno uporabniško ime ali geslo.";
+        }
+    }
+
+    async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await HandleLogin();
+        }
+    }
+
+    void OnAuthStateChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnAuthenticationStateChanged -= OnAuthStateChanged;
+    }
+}

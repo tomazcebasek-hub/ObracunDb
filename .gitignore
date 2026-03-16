@@ -1,0 +1,19 @@
+## .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+*.dll
+*.exe
+*.pdb
+publish/
+
+## NuGet
+packages/
+
+## IDE
+.idea/
+*.swp
+*~

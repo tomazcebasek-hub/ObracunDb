@@ -1,0 +1,362 @@
+@page "/loceni-racuni"
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject LoceniRacuniService LoceniRacuniService
+@inject AuthService AuthService
+
+<PageTitle>Ločeni računi</PageTitle>
+
+<style>
+    .action-btn {
+        color: #4fc3f7 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn:hover {
+        color: #81d4fa !important;
+    }
+    .action-btn-danger {
+        color: #e57373 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn-danger:hover {
+        color: #ef9a9a !important;
+    }
+</style>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+        <div style="flex:1; min-height:0;">
+            <DxGrid Data="@gridData"
+                    KeyFieldName="@nameof(LoceniRacuniGridDto.Id)"
+                    ShowFilterRow="true"
+                    PageSize="int.MaxValue"
+                    PagerVisible="false"
+                    CssClass="w-100 h-100">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.Partner)" Caption="Partner" Width="80px" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.NazivPartnerja)" Caption="Naziv partnerja" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.PogodbaDisplay)" Caption="Pogodba" Width="150px" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.Prodajalna)" Caption="Prodajalna" Width="100px" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.NazivProdajalne)" Caption="Naziv prodajalne" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.DatumVnosa)" Caption="Datum vnosa" DisplayFormat="dd.MM.yyyy HH:mm" Width="150px" />
+                    <DxGridDataColumn FieldName="@nameof(LoceniRacuniGridDto.Uporabnik)" Caption="Uporabnik" Width="120px" />
+                    <DxGridDataColumn Caption="Akcije" Width="100px">
+                        <CellDisplayTemplate>
+                            @{
+                                var item = (LoceniRacuniGridDto)context.DataItem;
+                            }
+                            <span class="action-btn" @onclick="@(() => ShowEditDialog(item.Partner))" title="Uredi">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                </svg>
+                            </span>
+                            <span class="action-btn-danger" @onclick="@(() => ShowDeleteConfirm(item.Partner, item.NazivPartnerja))" title="Izbriši">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                </svg>
+                            </span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                </Columns>
+            </DxGrid>
+        </div>
+
+        <div class="d-flex gap-2 align-items-center" style="flex-shrink:0; padding:8px 0;">
+            <DxButton Text="Nov vnos"
+                      Click="@ShowPartnerPickerDialog"
+                      RenderStyle="ButtonRenderStyle.Success" />
+        </div>
+    </div>
+}
+
+@* Dialog za izbiro partnerja *@
+<DxPopup @bind-Visible="@showPartnerDialog"
+         HeaderText="Izberi partnerja"
+         Width="500px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:100px; white-space:nowrap;">Partner</label>
+            <DxComboBox Data="@vsiPartnerji"
+                        @bind-Value="@selectedPartner"
+                        TextFieldName="DisplayName"
+                        ValueFieldName="Sifra"
+                        NullText="Izberi partnerja..."
+                        CssClass="w-100"
+                        ListRenderMode="ListRenderMode.Virtual"
+                        FilteringMode="DataGridFilteringMode.Contains" />
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        @if (!string.IsNullOrEmpty(partnerDialogError))
+        {
+            <span class="text-danger me-auto" style="font-size:0.85rem;">@partnerDialogError</span>
+        }
+        <DxButton Text="Naprej"
+                  Click="@OnPartnerNaprej"
+                  RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Prekliči"
+                  Click="@(() => { showPartnerDialog = false; partnerDialogError = null; })"
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@* Dialog za dodelitev prodajaln pogodbam *@
+<DxPopup @bind-Visible="@showAssignmentDialog"
+         HeaderText="@assignmentDialogTitle"
+         Width="950px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div style="display:flex; gap:24px;">
+            <div style="flex:1; min-width:250px;">
+                <h6 class="mb-2">Prodajalne partnerja</h6>
+                <table class="table table-sm table-bordered">
+                    <thead>
+                        <tr><th>Šifra</th><th>Naziv</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var prod in prodajalne)
+                        {
+                            <tr><td>@prod.Sifra</td><td>@prod.Naziv</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div style="flex:2;">
+                <h6 class="mb-2">Dodelitev prodajaln pogodbam</h6>
+                @foreach (var pog in pogodbeDodelitev)
+                {
+                    <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                        <label style="min-width:220px; white-space:nowrap;">
+                            Pogodba: @pog.Display
+                            @if (pog.VeljaDo.HasValue)
+                            {
+                                <span class="text-muted"> (do @pog.VeljaDo.Value.ToString("dd.MM.yyyy"))</span>
+                            }
+                        </label>
+                        <DxComboBox Data="@prodajalne"
+                                    @bind-Value="@pog.IzbranaProdajalna"
+                                    TextFieldName="DisplayName"
+                                    ValueFieldName="Sifra"
+                                    NullText="Izberi prodajalno..."
+                                    CssClass="w-100"
+                                    FilteringMode="DataGridFilteringMode.Contains" />
+                    </div>
+                }
+            </div>
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        @if (!string.IsNullOrEmpty(assignmentDialogError))
+        {
+            <span class="text-danger me-auto" style="font-size:0.85rem;">@assignmentDialogError</span>
+        }
+        <DxButton Text="Shrani"
+                  Click="@SaveAssignment"
+                  RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Prekliči"
+                  Click="@(() => { showAssignmentDialog = false; assignmentDialogError = null; })"
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@* Dialog za potrditev brisanja *@
+<DxPopup @bind-Visible="@showDeleteDialog"
+         HeaderText="Potrditev brisanja"
+         Width="400px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p>Ali ste prepričani, da želite izbrisati vse vnose za partnerja @deletePartnerNaziv?</p>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Izbriši"
+                  Click="@DeletePartner"
+                  RenderStyle="ButtonRenderStyle.Danger" />
+        <DxButton Text="Prekliči"
+                  Click="@(() => showDeleteDialog = false)"
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@code {
+    List<LoceniRacuniGridDto>? gridData;
+    List<PartnerFilterDto>? vsiPartnerji;
+    bool isLoading = true;
+
+    // Partner picker dialog
+    bool showPartnerDialog = false;
+    int selectedPartner;
+    string? partnerDialogError;
+
+    // Assignment dialog
+    bool showAssignmentDialog = false;
+    string assignmentDialogTitle = "";
+    string? assignmentDialogError;
+    int assignmentPartner;
+    bool isNewEntry = true;
+    List<ProdajalnaDto> prodajalne = new();
+    List<PogodbaDodelitevDto> pogodbeDodelitev = new();
+
+    // Delete dialog
+    bool showDeleteDialog = false;
+    int deletePartner;
+    string deletePartnerNaziv = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            gridData = await LoceniRacuniService.GetAllAsync();
+            vsiPartnerji = await LoceniRacuniService.GetAllPartnerjeAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    void ShowPartnerPickerDialog()
+    {
+        isNewEntry = true;
+        selectedPartner = 0;
+        partnerDialogError = null;
+        showPartnerDialog = true;
+    }
+
+    async Task OnPartnerNaprej()
+    {
+        if (selectedPartner == 0)
+        {
+            partnerDialogError = "Izberite partnerja.";
+            return;
+        }
+
+        // Preveri ali partner že obstaja
+        var exists = await LoceniRacuniService.PartnerZeObstajaAsync(selectedPartner);
+        if (exists)
+        {
+            partnerDialogError = "Partner že ima vnos. Uporabite gumb za urejanje.";
+            return;
+        }
+
+        // Preveri prodajalne
+        var prod = await LoceniRacuniService.GetProdajalneZaPartnerja(selectedPartner);
+        if (prod.Count < 2)
+        {
+            partnerDialogError = $"Partner ima samo {prod.Count} prodajalno/i. Potrebni sta vsaj 2.";
+            return;
+        }
+
+        // Preveri pogodbe
+        var pog = await LoceniRacuniService.GetVeljavnePogodbeZaPartnerja(selectedPartner);
+        if (pog.Count < 2)
+        {
+            partnerDialogError = $"Partner ima samo {pog.Count} veljavno/i pogodbo/i (danes ali v bodoče). Potrebni sta vsaj 2.";
+            return;
+        }
+
+        // Odpri dialog za dodelitev
+        showPartnerDialog = false;
+        partnerDialogError = null;
+        await OpenAssignmentDialog(selectedPartner, prod, pog);
+    }
+
+    async Task OpenAssignmentDialog(int partner, List<ProdajalnaDto>? prod = null, List<PogodbaDodelitevDto>? pog = null)
+    {
+        assignmentPartner = partner;
+        assignmentDialogError = null;
+
+        prodajalne = prod ?? await LoceniRacuniService.GetProdajalneZaPartnerja(partner);
+        pogodbeDodelitev = pog ?? await LoceniRacuniService.GetVeljavnePogodbeZaPartnerja(partner);
+
+        // Predizpolni obstoječe dodelitve (za urejanje)
+        if (!isNewEntry)
+        {
+            var existing = await LoceniRacuniService.GetObstojeceDodelitveAsync(partner);
+            foreach (var p in pogodbeDodelitev)
+            {
+                var key = $"{p.Stevilka}/{p.Leto}";
+                if (existing.TryGetValue(key, out var prodSifra))
+                {
+                    p.IzbranaProdajalna = prodSifra;
+                }
+            }
+        }
+
+        var partnerNaziv = vsiPartnerji?.FirstOrDefault(p => p.Sifra == partner)?.Naziv ?? partner.ToString();
+        assignmentDialogTitle = $"Dodelitev prodajaln – {partner} {partnerNaziv}";
+        showAssignmentDialog = true;
+    }
+
+    async Task ShowEditDialog(int partner)
+    {
+        isNewEntry = false;
+        await OpenAssignmentDialog(partner);
+    }
+
+    async Task SaveAssignment()
+    {
+        // Preveri da so vse pogodbe dodeljene
+        var missing = pogodbeDodelitev.Where(p => p.IzbranaProdajalna == 0).ToList();
+        if (missing.Count > 0)
+        {
+            assignmentDialogError = "Vsaki pogodbi morate dodeliti prodajalno.";
+            return;
+        }
+
+        try
+        {
+            var dodelitve = pogodbeDodelitev
+                .Select(p => (p.Stevilka, p.Leto, p.IzbranaProdajalna))
+                .ToList();
+
+            await LoceniRacuniService.SaveAsync(assignmentPartner, dodelitve);
+            showAssignmentDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            assignmentDialogError = $"Napaka: {ex.Message}";
+        }
+    }
+
+    void ShowDeleteConfirm(int partner, string naziv)
+    {
+        deletePartner = partner;
+        deletePartnerNaziv = $"{partner} – {naziv}";
+        showDeleteDialog = true;
+    }
+
+    async Task DeletePartner()
+    {
+        try
+        {
+            await LoceniRacuniService.DeletePartnerAsync(deletePartner);
+            showDeleteDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Napaka: {ex.Message}");
+        }
+    }
+}

@@ -1,0 +1,31 @@
+﻿@page "/"
+
+<PageTitle>Obračun</PageTitle>
+
+<div class="main-content">
+    <DxGridLayout CssClass="index-gridlayout">
+        <Rows>
+            <DxGridLayoutRow Height="auto" Areas="header"></DxGridLayoutRow>
+            <DxGridLayoutRow Height="auto" Areas="tiles"></DxGridLayoutRow>
+        </Rows>
+        <Items>
+            <DxGridLayoutItem Area="header" CssClass="title">
+                <Template>
+                    <div class="title-header-text">Obračun</div>
+                    <div class="title-content-text">Izberite postavko v meniju na levi strani</div>
+                </Template>
+            </DxGridLayoutItem>
+            @*<DxGridLayoutItem Area="tiles" CssClass="tiles">
+                <Template>
+                    <IndexTile NavigateUrl="/counter" Title="Counter" Description="Count mouse clicks and track the total." IconCssClass="icon-counter" />
+                    <IndexTile NavigateUrl="/weather" Title="Weather" Description="See a 5-day temperature and weather conditions forecast." IconCssClass="icon-weather" />
+                    <IndexTile NavigateUrl="/chart" Title="Chart" Description="Visualize data in a bar chart." IconCssClass="icon-chart" />
+                    <IndexTile NavigateUrl="/pdfviewer" Title="PDF Viewer" Description="Load PDF files and view them in the web browser." IconCssClass="icon-pdf-viewer" />
+                    <IndexTile NavigateUrl="/pivottable" Title="Pivot Table" Description="Summarize and analyze multi-dimensional data." IconCssClass="icon-pivot-table" />
+                    <IndexTile NavigateUrl="/scheduler" Title="Scheduler" Description="Create and organize daily tasks." IconCssClass="icon-scheduler" />
+                    <IndexTile NavigateUrl="/treelist" Title="TreeList" Description="Browse and edit self-referential or hierarchical data." IconCssClass="icon-tree-list" />
+                </Template>
+            </DxGridLayoutItem>*@
+        </Items>
+    </DxGridLayout>
+</div>

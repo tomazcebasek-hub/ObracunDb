@@ -1,0 +1,57 @@
+﻿@using Microsoft.AspNetCore.Mvc.ViewFeatures
+@using ObracunDb.Data
+@using ObracunDb.Services
+@inject IFileVersionProvider FileVersionProvider
+@inject UserParametersService UserParams
+@inject MigrationStatus MigStatus
+@implements IDisposable
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    @DxResourceManager.RegisterTheme(ActiveTheme)
+    @DxResourceManager.RegisterScripts()
+    <link href=@AppendVersion("_content/DevExpress.Blazor.Viewer/css/dx-blazor-viewer-components.fluent.css") rel="stylesheet" />
+    <link href=@AppendVersion("css/site.css") rel="stylesheet" />
+    <link href=@AppendVersion("ObracunDb.styles.css") rel="stylesheet" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    @if (MigStatus.HasError)
+    {
+        <MigrationErrorPanel />
+    }
+    else
+    {
+        <Routes @rendermode="InteractiveServer" />
+    }
+    <script src="_framework/blazor.web.js"></script>
+    <script src=@AppendVersion("js/clipboard.js")></script>
+</body>
+</html>
+
+@code {
+    ITheme ActiveTheme => UserParams.IsDarkTheme 
+        ? Themes.Fluent.Clone(p => p.Mode = ThemeMode.Dark)
+        : Themes.Fluent.Clone(p => p.Mode = ThemeMode.Light);
+
+    protected override void OnInitialized()
+    {
+        UserParams.OnThemeChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string AppendVersion(string path) => FileVersionProvider.AddFileVersionToPath("/", path);
+
+    public void Dispose()
+    {
+        UserParams.OnThemeChanged -= OnThemeChanged;
+    }
+}

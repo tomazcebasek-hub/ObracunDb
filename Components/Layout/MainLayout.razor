@@ -1,0 +1,93 @@
+﻿@inherits DrawerStateLayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject ObracunDb.Services.ParametriService Parametri
+@inject ObracunDb.Services.AuthService AuthService
+@inject ObracunDb.Services.UserParametersService UserParams
+@using Microsoft.AspNetCore.Components.Sections
+@using ObracunDb.Data.Entities
+
+<div class="page">
+    <Drawer CssClass="navigation-drawer" PanelWidth="240px">
+        <HeaderTemplate>
+            <div class="navigation-drawer-header">
+                <NavLink href="@AddDrawerStateToUrl("/")" style="text-decoration:none;">
+                    <span style="font-size:1.4rem; font-weight:600; color:white;">Obračun</span>
+                </NavLink>
+                <NavLink aria-label="Close menu" href="@AddDrawerStateToUrlToggled(LocalPath)">
+                    <DxButton aria-label="Close menu" RenderStyle="ButtonRenderStyle.Light" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="btn-icon-only" IconCssClass="@(ToggledDrawer ? "icon icon-close" : "icon icon-menu")"></DxButton>
+                </NavLink>
+            </div>
+        </HeaderTemplate>
+        <BodyTemplate>
+            <div class="w-100">
+                <NavMenu></NavMenu>
+            </div>
+        </BodyTemplate>
+        <FooterTemplate>
+            @*<div class="navigation-drawer-footer">
+                <NavLink href="https://docs.devexpress.com/Blazor/400725/blazor-components" class="button-link">
+                    <DxButton Text="Docs" RenderStyle="ButtonRenderStyle.Light" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-docs"></DxButton>
+                </NavLink>
+                <NavLink href="https://demos.devexpress.com/blazor/" class="button-link">
+                    <DxButton Text="Demos" RenderStyle="ButtonRenderStyle.Light" RenderStyleMode="ButtonRenderStyleMode.Text" IconCssClass="icon icon-demos"></DxButton>
+                </NavLink>
+            </div>*@
+        </FooterTemplate>
+        <TargetContent>
+            <div class="drawer-content">
+                <div class="nav-buttons-container d-flex align-items-center">
+                    <NavLink aria-label="Open menu" href="@AddDrawerStateToUrlToggled(LocalPath)" class="menu-button">
+                        <DxButton aria-label="Open menu" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="btn-icon-only" IconCssClass="icon icon-menu"></DxButton>
+                    </NavLink>
+                    @if (LocalPath != "/") {
+                        <NavLink href="@AddDrawerStateToUrl("/")" class="button-link">
+                            <DxButton Text="Nazaj" RenderStyle="ButtonRenderStyle.Secondary" RenderStyleMode="ButtonRenderStyleMode.Text" CssClass="back-button" IconCssClass="icon icon-back"></DxButton>
+                        </NavLink>
+                        <span class="ms-3 page-title">@PageTitle</span>
+                        <SectionOutlet SectionName="PageHeaderExtra" />
+                    }
+                </div>
+                <div class="page-content-container">
+                    @Body
+                </div>
+            </div>
+        </TargetContent>
+    </Drawer>
+</div>
+
+@code {
+    string LocalPath => new Uri(NavigationManager.Uri).LocalPath;
+
+    string Obdobje => $"{Parametri.GetInt(ObracunParam.MesecObracuna)}/{Parametri.GetInt(ObracunParam.LetoObracuna)}";
+
+    protected override void OnInitialized()
+    {
+        var user = AuthService.CurrentUser?.UporabniskoIme ?? "";
+        if (!string.IsNullOrEmpty(user))
+        {
+            UserParams.SetTheme(Parametri.ImaTemnoOzadje(user));
+        }
+    }
+
+    string PageTitle => LocalPath.ToLower() switch
+    {
+        "/osnutki" => "Osnutki",
+        "/potrjevanje" => "Potrjevanje nalogov",
+        "/partnerji" => "Partnerji",
+        "/predracuni" => "Predračuni",
+        "/paketi" => "Paketi minut",
+        "/partner-minute" => "Partner minute",
+        "/zakljucek" => "Zaključek meseca",
+        "/sestevek" => "Seštevek",
+        "/pdfviewer" => "PDF Viewer",
+        "/pivottable" => "Pivot Table",
+        "/counter" => "Counter",
+        "/weather" => "Weather",
+        "/chart" => "Chart",
+        "/scheduler" => "Scheduler",
+        "/treelist" => "TreeList",
+        "/parametri" => "Barva ozadja",
+        "/nastavitve" => "Nastavitve",
+        _ => ""
+    };
+}

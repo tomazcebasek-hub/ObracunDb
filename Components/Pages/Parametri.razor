@@ -1,0 +1,259 @@
+@page "/parametri"
+@using ObracunDb.Services
+@inject UserParametersService UserParams
+@inject ParametriService ParametriService
+@inject AuthService AuthService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Barva ozadja</PageTitle>
+
+<div class="theme-selector-container">
+    <div class="theme-selector-card">
+        <div class="theme-header">
+            <svg class="theme-header-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="5"></circle>
+                <line x1="12" y1="1" x2="12" y2="3"></line>
+                <line x1="12" y1="21" x2="12" y2="23"></line>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                <line x1="1" y1="12" x2="3" y2="12"></line>
+                <line x1="21" y1="12" x2="23" y2="12"></line>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+            <h2>Barva ozadja</h2>
+        </div>
+        <p class="theme-subtitle">Izberite svetlo ali temno temo za aplikacijo</p>
+
+        <div class="theme-options">
+            <div class="theme-option @(selectedTheme == false ? "selected" : "")" @onclick="() => SelectTheme(false)">
+                <div class="theme-option-radio">
+                    <div class="radio-outer">
+                        @if (selectedTheme == false)
+                        {
+                            <div class="radio-inner"></div>
+                        }
+                    </div>
+                </div>
+                <div class="theme-option-icon sun-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                </div>
+                <div class="theme-option-text">
+                    <div class="theme-option-title">Svetla</div>
+                    <div class="theme-option-desc">Svetlo ozadje z temnim besedilom</div>
+                </div>
+            </div>
+
+            <div class="theme-option @(selectedTheme == true ? "selected" : "")" @onclick="() => SelectTheme(true)">
+                <div class="theme-option-radio">
+                    <div class="radio-outer">
+                        @if (selectedTheme == true)
+                        {
+                            <div class="radio-inner"></div>
+                        }
+                    </div>
+                </div>
+                <div class="theme-option-icon moon-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </div>
+                <div class="theme-option-text">
+                    <div class="theme-option-title">Temna</div>
+                    <div class="theme-option-desc">Temno ozadje s svetlim besedilom</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="theme-note">
+            Sprememba barve ozadja bo vidna ob naslednjem zagonu programa.
+        </div>
+
+        <div class="mt-3 d-flex gap-2 justify-content-end">
+            <DxButton Text="Shrani" RenderStyle="ButtonRenderStyle.Primary" Click="@Shrani" Enabled="@jeSpremenjeno" />
+            <DxButton Text="Preklièi" RenderStyle="ButtonRenderStyle.Secondary" Click="@Preklici" Enabled="@jeSpremenjeno" />
+        </div>
+    </div>
+</div>
+
+<style>
+    .theme-selector-container {
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+    }
+
+    .theme-selector-card {
+        background: var(--dxbl-surface-color, #f8f9fa);
+        border: 1px solid var(--dxbl-border-color, #dee2e6);
+        border-radius: 12px;
+        padding: 30px;
+        max-width: 600px;
+        width: 100%;
+    }
+
+    .theme-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+
+    .theme-header-icon {
+        color: var(--dxbl-text-color, #333);
+    }
+
+    .theme-header h2 {
+        margin: 0;
+        font-size: 1.75rem;
+        font-weight: 600;
+        color: var(--dxbl-text-color, #333);
+    }
+
+    .theme-subtitle {
+        color: var(--dxbl-secondary-text-color, #6c757d);
+        margin-bottom: 24px;
+        font-size: 1rem;
+    }
+
+    .theme-options {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .theme-option {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        border: 2px solid var(--dxbl-border-color, #dee2e6);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: var(--dxbl-bg-color, #fff);
+    }
+
+    .theme-option:hover {
+        border-color: var(--dxbl-primary-color, #0d6efd);
+        background: var(--dxbl-hover-bg-color, #f8f9fa);
+    }
+
+    .theme-option.selected {
+        border-color: var(--dxbl-primary-color, #0d6efd);
+        background: var(--dxbl-selected-bg-color, #e7f1ff);
+    }
+
+    .theme-option-radio {
+        flex-shrink: 0;
+    }
+
+    .radio-outer {
+        width: 22px;
+        height: 22px;
+        border: 2px solid var(--dxbl-border-color, #adb5bd);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: border-color 0.2s ease;
+    }
+
+    .theme-option.selected .radio-outer {
+        border-color: var(--dxbl-primary-color, #0d6efd);
+    }
+
+    .radio-inner {
+        width: 12px;
+        height: 12px;
+        background: var(--dxbl-primary-color, #0d6efd);
+        border-radius: 50%;
+    }
+
+    .theme-option-icon {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .sun-icon {
+        color: #f59e0b;
+    }
+
+    .moon-icon {
+        color: #6366f1;
+    }
+
+    .theme-option-text {
+        flex-grow: 1;
+    }
+
+    .theme-option-title {
+        font-weight: 600;
+        font-size: 1.1rem;
+        color: var(--dxbl-text-color, #333);
+        margin-bottom: 4px;
+    }
+
+    .theme-option-desc {
+        color: var(--dxbl-secondary-text-color, #6c757d);
+        font-size: 0.9rem;
+    }
+
+    .theme-note {
+        margin-top: 24px;
+        padding: 12px;
+        background: var(--dxbl-info-bg-color, #e8f4fd);
+        border-radius: 8px;
+        color: var(--dxbl-secondary-text-color, #6c757d);
+        font-size: 0.85rem;
+        text-align: center;
+    }
+</style>
+
+@code {
+    bool selectedTheme;
+    bool originalTheme;
+
+    bool jeSpremenjeno => selectedTheme != originalTheme;
+
+    protected override void OnInitialized()
+    {
+        selectedTheme = UserParams.IsDarkTheme;
+        originalTheme = selectedTheme;
+    }
+
+    void SelectTheme(bool isDark)
+    {
+        selectedTheme = isDark;
+    }
+
+    async Task Shrani()
+    {
+        var user = AuthService.CurrentUser?.UporabniskoIme ?? "";
+        if (!string.IsNullOrEmpty(user))
+        {
+            await ParametriService.NastaviTemnoOzadjeAsync(user, selectedTheme);
+        }
+
+        NavigationManager.NavigateTo("/");
+    }
+
+    void Preklici()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+}

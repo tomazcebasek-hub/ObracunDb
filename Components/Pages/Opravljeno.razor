@@ -1,0 +1,1083 @@
+@page "/osnutki"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ParametriService Parametri
+@inject ObracunService ObracunService
+@inject PartnerMinuteService PartnerMinuteService
+@inject IJSRuntime JS
+@using Microsoft.AspNetCore.Components.Sections
+
+<PageTitle>Osnutki</PageTitle>
+
+<SectionContent SectionName="PageHeaderExtra">
+    <span class="ms-2 text-muted">@_mesec/@_leto</span>
+</SectionContent>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">
+        <p>@errorMessage</p>
+    </div>
+}
+else
+{
+    <!-- Zgornji del 40% -->
+    <DxGrid @ref="gridPartnerji"
+            Data="@podatki"
+            KeyFieldName="@nameof(OsnutekPartnerDto.Sifra)"
+            ShowAllRows="true"
+            ShowFilterRow="true"
+            FocusedRowChanged="@OnPartnerSelected"
+            FocusedRowEnabled="true"
+            VirtualScrollingEnabled="true"
+            CssClass="w-100"
+            style="height: 40vh;">
+            <Columns>
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.Sifra)" Caption="Šifra" Width="80px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.NazivPartnerja)" Caption="Partner" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.ImaPogodbo)" Caption="Pog" Width="55px">
+                    <CellDisplayTemplate>
+                        @{ var pog = (bool)(context.Value ?? false); }
+                        @(pog ? "Da" : "")
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.ImaPredracun)" Caption="Pred" Width="55px">
+                    <CellDisplayTemplate>
+                        @{ var pred = (bool)(context.Value ?? false); }
+                        @(pred ? "Da" : "")
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.ImaNaloge)" Caption="Nal" Width="55px">
+                    <CellDisplayTemplate>
+                        @{ var nal = (bool)(context.Value ?? false); }
+                        @(nal ? "Da" : "")
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.Minute)" Caption="Minute" Width="75px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.MinNeobr)" Caption="MinNeobr" Width="85px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.KorPog)" Caption="KorPog" Width="75px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.KorPre)" Caption="KorPre" Width="75px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.KorRoc)" Caption="KorRoč" Width="75px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.KorPar)" Caption="KorPar" Width="75px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.ZaracMin)" Caption="ZaračMin" Width="85px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.PotrdilKdo)" Caption="Potrdil" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(OsnutekPartnerDto.PotrdilKdaj)" Caption="Kdaj" DisplayFormat="dd.MM.yyyy HH:mm" Width="135px" />
+            </Columns>
+            <TotalSummary>
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(OsnutekPartnerDto.Sifra)" DisplayText="Partnerjev: {0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.Minute)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.MinNeobr)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.KorPog)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.KorPre)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.KorRoc)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.KorPar)" DisplayText="{0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPartnerDto.ZaracMin)" DisplayText="{0}" />
+            </TotalSummary>
+        </DxGrid>
+
+    <div class="d-flex gap-2 align-items-center" style="padding: 4px 0;">
+        @if (selectedPartner != null && string.IsNullOrEmpty(selectedPartner.PotrdilKdo))
+        {
+            <DxButton Text="Potrdi" 
+                      Click="@PotrdiOsnutek" 
+                      RenderStyle="ButtonRenderStyle.Success" />
+        }
+        <DxButton Text="@(pokaziVse ? "Samo nepotrjeni" : "Prikaži vse")" 
+                  Click="@OnTogglePrikaziVse" 
+                  RenderStyle="@(pokaziVse ? ButtonRenderStyle.Info : ButtonRenderStyle.Light)" />
+        <span class="text-muted ms-auto" style="font-size: 0.85rem;">
+            Vseh: @StVseh | Potrjenih: @StPotrjenih
+        </span>
+    </div>
+
+    <hr class="my-2" />
+
+    <!-- Spodnji del 60% -->
+    <div style="height: 55vh; display: flex; gap: 8px;">
+        <!-- Levi del - zavihki -->
+        <div style="flex: 1; overflow: auto;">
+            @if (selectedPartner != null)
+            {
+                <DxTabs ActiveTabIndex="@activeTabIndex" ActiveTabIndexChanged="@OnTabChanged">
+                    <DxTab Text="Info" />
+                    <DxTab Text="Obračunani nalogi" />
+                    <DxTab Text="Neobračunani nalogi" />
+                    <DxTab Text="Pogodbe" />
+                    <DxTab Text="Predračuni" />
+                    <DxTab Text="Računi" />
+                    <DxTab Text="Avansi" />
+                    <DxTab Text="Ročni" />
+                </DxTabs>
+
+                @if (activeTabIndex == 0)
+                {
+                    <div style="display:flex; flex-direction:column; height:100%;">
+                        <div style="flex:2; overflow:auto;">
+                            <div class="mt-2" style="white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;">Skupaj minute : @selectedPartner.Minute (za obračun @selectedPartner.MinuteObracunaneBruto, se ne zaračunajo @selectedPartner.MinNeobr)
+Število pogodb: @selectedPartner.SteviloPogodb
+Skupaj minute v plus: @selectedPartner.SkupajMinuteVPlus
+- predračuni      : @selectedPartner.VseMinutePredracun, od tega že @selectedPartner.ZePorabljenePredracun, preostane @selectedPartner.PlusMinutePredracun, koriščeno @selectedPartner.KorPre
+- ročni           : @selectedPartner.PlusMinuteRocno, koriščeno @selectedPartner.KorRoc
+- pogodbe         : @selectedPartner.PlusMinutePogodba, koriščeno @selectedPartner.KorPog
+- partner minute  : @selectedPartner.VseMinutePartnerMinute, od tega že @selectedPartner.ZePorabljenePartnerMinute, preostane @selectedPartner.PlusMinutePartnerMinute, koriščeno @selectedPartner.KorPar
+Za obračun       : @selectedPartner.ZaracMin minut</div>
+                        </div>
+                        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; padding:8px 0;">
+                            @{
+                                var total = selectedPartner.Minute;
+                                var segments = new (int Value, string Color, string Label)[]
+                                {
+                                    (selectedPartner.MinNeobr, "#9E9E9E", "Se ne obračunajo"),
+                                    (selectedPartner.KorPre, "#42A5F5", "Koriščeno predračuni"),
+                                    (selectedPartner.KorRoc, "#66BB6A", "Koriščeno ročni"),
+                                    (selectedPartner.KorPog, "#FFA726", "Koriščeno pogodbe"),
+                                    (selectedPartner.KorPar, "#AB47BC", "Koriščeno partner minute"),
+                                    (selectedPartner.ZaracMin, "#EF5350", "Obračunano")
+                                };
+                            }
+                            @if (total > 0)
+                            {
+                                <div style="display:flex; height:28px; width:100%; border-radius:4px; overflow:hidden; border:1px solid #ccc;">
+                                    @foreach (var seg in segments)
+                                    {
+                                        if (seg.Value > 0)
+                                        {
+                                            var pct = (double)seg.Value / total * 100;
+                                            <div style="width:@(pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; background:@seg.Color; height:100%;"
+                                                 title="@seg.Label: @seg.Value min (@(pct.ToString("F0")) %)"></div>
+                                        }
+                                    }
+                                </div>
+                                <div style="font-size:0.75rem; color:#666; margin-top:4px;">
+                                    Skupaj: @total min
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="font-size:0.8rem; color:#999;">Ni minut.</div>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (activeTabIndex == 1 || activeTabIndex == 2)
+                {
+                    <DxGrid Data="@nalogi"
+                        KeyFieldName="@nameof(NalogGridDto.Key)"
+                        ShowAllRows="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnNalogSelected"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.NazivPotnika)" Caption="Potnik" Width="140px" />
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.ZacetekUra)" Caption="Začetek" DisplayFormat="HH:mm" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.KonecUra)" Caption="Konec" DisplayFormat="HH:mm" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(NalogGridDto.Minute)" Caption="Minute" Width="70px" />
+                    </Columns>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 3)
+                {
+                    <DxGrid Data="@pogodbe"
+                        KeyFieldName="@nameof(PogodbaGridDto.Key)"
+                        ShowAllRows="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnPogodbaSelected"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.SifNaprejNazaj)" Caption="Tip" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.Stevilka)" Caption="Št." Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.Leto)" Caption="Leto" Width="55px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.StPogodbe)" Caption="Št.pog." Width="80px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.PrviRacunOd)" Caption="Od" DisplayFormat="dd.MM.yyyy" Width="95px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.VeljaDo)" Caption="Do" DisplayFormat="dd.MM.yyyy" Width="95px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.NaKolikoMesecev)" Caption="Mes" Width="50px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.StMinut)" Caption="Min" Width="50px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaGridDto.Opomba)" Caption="Opomba" />
+                    </Columns>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 4)
+                {
+                    <DxGrid Data="@predracuni"
+                        KeyFieldName="@nameof(PredracunGridDto.Key)"
+                        ShowAllRows="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnPredracunSelected"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Leto)" Caption="Leto" Width="55px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekBrezDdv)" Caption="Znesek" DisplayFormat="N2" Width="95px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Minute)" Caption="Min" Width="55px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.MinutePreostalo)" Caption="Preost." Width="65px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Status" Width="80px" />
+                    </Columns>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 5)
+                {
+                    <DxGrid Data="@racuni"
+                        KeyFieldName="@nameof(RacunGridDto.Key)"
+                        ShowAllRows="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnRacunSelected"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.ZnesekKoncni)" Caption="Končni znesek" DisplayFormat="N2" Width="120px" />
+                    </Columns>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 6)
+                {
+                    <DxGrid Data="@avansi"
+                        KeyFieldName="@nameof(RacunGridDto.Key)"
+                        ShowAllRows="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnAvansSelected"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunGridDto.ZnesekKoncni)" Caption="Končni znesek" DisplayFormat="N2" Width="120px" />
+                    </Columns>
+                    </DxGrid>
+                }
+                else if (activeTabIndex == 7)
+                {
+                    <DxGrid Data="@rocnePostavke"
+                        KeyFieldName="@nameof(RocnaPostavkaGridDto.Key)"
+                        ShowAllRows="true"
+                        CssClass="w-100 mt-1">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.NalogStevilka)" Caption="Številka naloga" Width="120px" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.DatumNaloga)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.Artikel)" Caption="Artikel" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.NazivArtikla)" Caption="Naziv artikla" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.Kolicina)" Caption="Količina" Width="80px" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="80px" />
+                        <DxGridDataColumn FieldName="@nameof(RocnaPostavkaGridDto.Minute)" Caption="Minute" Width="80px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(RocnaPostavkaGridDto.Minute)" DisplayText="{0}" />
+                    </TotalSummary>
+                    </DxGrid>
+                }
+            }
+            else
+            {
+                <p class="text-muted mt-2">Izberite partnerja v zgornjem gridu.</p>
+            }
+        </div>
+
+        <!-- Desni del -->
+        <div style="flex: 1; overflow: auto; padding: 8px;">
+            @if (selectedPartner != null && activeTabIndex == 0)
+            {
+                <DxGrid Data="@postavke"
+                        KeyFieldName="@nameof(OsnutekPosGridDto.Zs)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Artikel)" Caption="Artikel" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.EnotaArtikla)" Caption="Enota" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Cena)" Caption="Cena" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Rabat)" Caption="Rabat" DisplayFormat="N2" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Vrednost)" Caption="Vrednost" DisplayFormat="N2" Width="100px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPosGridDto.Kolicina)" DisplayText="{0:N2}" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPosGridDto.Vrednost)" DisplayText="{0:N2}" />
+                    </TotalSummary>
+                </DxGrid>
+            }
+            else if (activeTabIndex == 3 && selectedPogodba != null)
+            {
+                <DxGrid Data="@pogodbePozicije"
+                        KeyFieldName="@nameof(PogodbaPozGridDto.Pozicija)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Sifra)" Caption="Šifra" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Naziv)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Kolicina)" Caption="Kol" DisplayFormat="N2" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Cena)" Caption="Cena" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Rabat)" Caption="Rabat" DisplayFormat="N1" Width="65px" />
+                        <DxGridDataColumn FieldName="@nameof(PogodbaPozGridDto.Meseci)" Caption="Meseci" Width="200px" />
+                    </Columns>
+                </DxGrid>
+            }
+            else if (activeTabIndex == 4 && selectedPredracun != null)
+            {
+                <DxGrid Data="@predracunPostavke"
+                        KeyFieldName="@nameof(PredracunKnjizbaGridDto.Zs)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.SifraArtikla)" Caption="Šifra" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="85px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="85px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Rabat1)" Caption="Rabat" DisplayFormat="N2" Width="65px" />
+                        <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaVrednost)" Caption="Vrednost" DisplayFormat="N2" Width="95px" />
+                    </Columns>
+                </DxGrid>
+            }
+            else if ((activeTabIndex == 5 || activeTabIndex == 6) && selectedRacunPostavke.Count > 0)
+            {
+                <DxGrid Data="@selectedRacunPostavke"
+                        KeyFieldName="@nameof(RacunKnjizbaDto.Zs)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.SifraArtikla)" Caption="Artikel" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Enota)" Caption="EM" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.ProdajnaVrednost)" Caption="Vrednost" DisplayFormat="N2" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.Rabat1)" Caption="Rabat" DisplayFormat="N2" Width="70px" />
+                        <DxGridDataColumn FieldName="@nameof(RacunKnjizbaDto.NetoVrednost)" Caption="Neto" DisplayFormat="N2" Width="100px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(RacunKnjizbaDto.ProdajnaVrednost)" DisplayText="{0:N2}" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(RacunKnjizbaDto.NetoVrednost)" DisplayText="{0:N2}" />
+                    </TotalSummary>
+                </DxGrid>
+            }
+            else if (selectedNalog != null)
+            {
+                <div style="white-space: pre-wrap;">@selectedNalog.Opis</div>
+            }
+        </div>
+    </div>
+
+    <!-- Spodnja vrstica z gumbi -->
+    <div class="d-flex gap-2 mt-2">
+        <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" Click="@(() => showInfoPopup = true)" />
+        <DxButton Text="Korektura" RenderStyle="ButtonRenderStyle.Warning" Enabled="@(selectedPartner != null)" Click="@OpenKorektura" />
+        <DxButton Text="@($"Obdobje ({_mesec}/{_leto})")"
+                  RenderStyle="ButtonRenderStyle.Dark"
+                  Click="@OpenObdobje" />
+        <DxButton Text="@copyNalogiText" RenderStyle="ButtonRenderStyle.Success" Enabled="@(selectedPartner != null)" Click="@CopyNalogi" />
+        <DxButton Text="CALC" RenderStyle="ButtonRenderStyle.Light" Enabled="@(selectedPartner != null && !string.IsNullOrEmpty(selectedPartner?.Opis))" Click="@(() => showCalcPopup = true)" />
+    </div>
+
+    @* === CALC popup (log porabe minut) === *@
+    <DxPopup @bind-Visible="@showCalcPopup"
+             HeaderText="Log obračuna"
+             Width="75vw"
+             Height="75vh"
+             CloseOnOutsideClick="true"
+             ShowFooter="true">
+        <BodyContentTemplate>
+            @if (!string.IsNullOrEmpty(selectedPartner?.Opis))
+            {
+                <div style="white-space:pre-wrap; font-family:monospace; font-size:0.75rem; height:100%; overflow:auto;">@selectedPartner.Opis</div>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showCalcPopup = false)" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    <DxPopup @bind-Visible="@showInfoPopup"
+             HeaderText="Legenda stolpcev"
+             Width="550px"
+             CloseOnOutsideClick="true"
+             ShowFooter="true">
+        <BodyContentTemplate>
+            <table class="table table-sm table-striped" style="font-size: 0.85rem;">
+                <thead>
+                    <tr><th>Stolpec</th><th>Opis</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><strong>Šifra</strong></td><td>Šifra partnerja</td></tr>
+                    <tr><td><strong>Partner</strong></td><td>Naziv partnerja</td></tr>
+                    <tr><td><strong>Pog</strong></td><td>Ali ima partner veljavno pogodbo za ta mesec</td></tr>
+                    <tr><td><strong>Tip</strong></td><td>Tip pogodbe: Naprej (vnaprej) ali Nazaj (za nazaj)</td></tr>
+                    <tr><td><strong>Pred</strong></td><td>Ali ima predračun s statusom 5 ali plačane predračune</td></tr>
+                    <tr><td><strong>Nal</strong></td><td>Ali ima delovne naloge v tem mesecu</td></tr>
+                    <tr><td><strong>Minute</strong></td><td>Skupaj minute nalogov (obračunane + neobračunane)</td></tr>
+                    <tr><td><strong>MinNeobr</strong></td><td>Minute nalogov, ki se ne obračunajo (KajObračunam = Nič ali Km)</td></tr>
+                    <tr><td><strong>KorPog</strong></td><td>Minute, koriščene iz pogodbe (dobroimetje pogodbe)</td></tr>
+                    <tr><td><strong>KorPre</strong></td><td>Minute, koriščene iz predračunov (dobroimetje predračunov)</td></tr>
+                    <tr><td><strong>KorRoč</strong></td><td>Minute, vnesene kot paketni artikli (ročno dobroimetje)</td></tr>
+                    <tr><td><strong>KorPar</strong></td><td>Minute, vnesene kot projektni listi (partner minute)</td></tr>
+                    <tr><td><strong>ZaračMin</strong></td><td>Zaračunane minute (obračunane bruto minus vse koriščene)</td></tr>
+                </tbody>
+            </table>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showInfoPopup = false)" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Korektura popup (PartnerMinute za izbranega partnerja) === *@
+    <DxPopup @bind-Visible="@showKorekturaPopup"
+             HeaderText="@korekturaTitle"
+             Width="900px"
+             CloseOnOutsideClick="false"
+             ShowFooter="true"
+             ShowCloseButton="true">
+        <BodyContentTemplate>
+            @if (korekturaData != null)
+            {
+                <DxGrid Data="@korekturaData"
+                        KeyFieldName="@nameof(PartnerMinuteGridDto.Id)"
+                        ShowAllRows="true"
+                        CssClass="w-100">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy HH:mm" Width="150px" />
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Minut)" Caption="Minut" DisplayFormat="N2" Width="100px" />
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Preostalo)" Caption="Preostalo" Width="100px">
+                            <CellDisplayTemplate Context="cellCtx">
+                                @{
+                                    var pmItem = (PartnerMinuteGridDto)cellCtx.DataItem;
+                                }
+                                <a href="javascript:void(0)" @onclick="@(() => ShowPorabaMesecih(pmItem))" title="Prikaži porabo po mesecih" style="text-decoration:none;">@pmItem.Preostalo</a>
+                            </CellDisplayTemplate>
+                        </DxGridDataColumn>
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.VeljavnostMesecih)" Caption="Veljavnost (mes.)" Width="130px" />
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.ZacetekMesec)" Caption="Začetek mesec" Width="120px" />
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.ZacetekLeto)" Caption="Začetek leto" Width="110px" />
+                        <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Opomba)" Caption="Opomba" />
+                        <DxGridDataColumn Caption="" Width="100px">
+                            <CellDisplayTemplate Context="cellContext">
+                                @{
+                                    var item = (PartnerMinuteGridDto)cellContext.DataItem;
+                                }
+                                <a href="javascript:void(0)" @onclick="@(() => KorekturaEdit(item))" class="me-2" title="Uredi">✏️</a>
+                                <a href="javascript:void(0)" @onclick="@(() => KorekturaShowDelete(item))" style="color:#e57373;" title="Izbriši">🗑️</a>
+                            </CellDisplayTemplate>
+                        </DxGridDataColumn>
+                    </Columns>
+                </DxGrid>
+
+                <div class="d-flex gap-2 mt-2">
+                    <DxButton Text="Nov vnos" RenderStyle="ButtonRenderStyle.Success" Click="@KorekturaAdd" />
+                </div>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@CloseKorektura" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Korektura vnos/urejanje dialog === *@
+    <DxPopup @bind-Visible="@showKorekturaEditDialog"
+             HeaderText="@korekturaEditTitle"
+             Width="600px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Partner</label>
+                <DxTextBox Text="@korekturaPartnerDisplay" ReadOnly="true" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Minut</label>
+                <DxSpinEdit @bind-Value="@korEditMinut" MinValue="0m" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Veljavnost (mesecih)</label>
+                <DxSpinEdit @bind-Value="@korEditVeljavnost" MinValue="1" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Začetek mesec</label>
+                <DxSpinEdit @bind-Value="@korEditZacetekMesec" MinValue="1" MaxValue="12" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Začetek leto</label>
+                <DxSpinEdit @bind-Value="@korEditZacetekLeto" MinValue="2020" MaxValue="2099" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:flex-start; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap; padding-top:6px;">Opomba</label>
+                <DxMemo @bind-Text="@korEditOpomba" Rows="3" CssClass="w-100" />
+            </div>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            @if (!string.IsNullOrEmpty(korEditError))
+            {
+                <span class="text-danger me-auto" style="font-size:0.85rem;">@korEditError</span>
+            }
+            <DxButton Text="Shrani" Click="@KorekturaSave" RenderStyle="ButtonRenderStyle.Primary" />
+            <DxButton Text="Prekliči" Click="@(() => { showKorekturaEditDialog = false; korEditError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Korektura brisanje potrditev === *@
+    <DxPopup @bind-Visible="@showKorekturaDeleteDialog"
+             HeaderText="Potrditev brisanja"
+             Width="400px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            <p>Ali ste prepričani, da želite izbrisati ta vnos?</p>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Izbriši" Click="@KorekturaDelete" RenderStyle="ButtonRenderStyle.Danger" />
+            <DxButton Text="Prekliči" Click="@(() => showKorekturaDeleteDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Poraba po mesecih popup === *@
+    <DxPopup @bind-Visible="@showPorabaPopup"
+             HeaderText="@porabaTitle"
+             Width="400px"
+             CloseOnOutsideClick="true"
+             ShowFooter="true"
+             ShowCloseButton="true">
+        <BodyContentTemplate>
+            @if (porabaData != null && porabaData.Count > 0)
+            {
+                <table class="table table-sm table-striped" style="font-size:0.85rem;">
+                    <thead><tr><th>Mesec</th><th>Leto</th><th style="text-align:right;">Porabljeno</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in porabaData)
+                        {
+                            <tr><td>@p.Mesec</td><td>@p.Leto</td><td style="text-align:right;">@p.Kolicina</td></tr>
+                        }
+                        <tr style="font-weight:bold;"><td colspan="2">Skupaj</td><td style="text-align:right;">@porabaData.Sum(p => p.Kolicina)</td></tr>
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">Ni porabe.</p>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showPorabaPopup = false)" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Obdobje popup === *@
+    <DxPopup @bind-Visible="@showObdobjePopup"
+             HeaderText="Izberi obdobje"
+             Width="350px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:60px;"><strong>Mesec</strong></label>
+                <DxSpinEdit @bind-Value="@_obdobjeMesec" MinValue="1" MaxValue="12" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:60px;"><strong>Leto</strong></label>
+                <DxSpinEdit @bind-Value="@_obdobjeLeto" MinValue="2020" MaxValue="2099" CssClass="w-100" />
+            </div>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Naloži" Click="@OnObdobjePotrdi" RenderStyle="ButtonRenderStyle.Primary" />
+            <DxButton Text="Prekliči" Click="@(() => showObdobjePopup = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+}
+
+@code {
+    IGrid? gridPartnerji;
+    List<OsnutekPartnerDto>? vsiPodatki;
+    List<OsnutekPartnerDto>? podatki;
+    List<NalogGridDto> nalogi = new();
+    List<OsnutekPosGridDto> postavke = new();
+    List<PogodbaGridDto> pogodbe = new();
+    List<PogodbaPozGridDto> pogodbePozicije = new();
+    List<PredracunGridDto> predracuni = new();
+    List<PredracunKnjizbaGridDto> predracunPostavke = new();
+    List<RocnaPostavkaGridDto> rocnePostavke = new();
+    List<RacunGridDto> racuni = new();
+    List<RacunGridDto> avansi = new();
+    List<RacunKnjizbaDto> selectedRacunPostavke = new();
+    OsnutekPartnerDto? selectedPartner;
+    NalogGridDto? selectedNalog;
+    PogodbaGridDto? selectedPogodba;
+    PredracunGridDto? selectedPredracun;
+    bool isLoading = true;
+    bool showInfoPopup;
+    bool showCalcPopup;
+    bool pokaziVse;
+    string? errorMessage;
+    int activeTabIndex;
+    int _mesec;
+    int _leto;
+
+    int StVseh => vsiPodatki?.Count ?? 0;
+    int StPotrjenih => vsiPodatki?.Count(p => !string.IsNullOrEmpty(p.PotrdilKdo)) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+            vsiPodatki = await ObracunService.GetOsnutkiAsync(_leto, _mesec);
+            podatki = vsiPodatki.Where(p => string.IsNullOrEmpty(p.PotrdilKdo)).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    // === CopyNalogi ===
+    string copyNalogiText = "CopyNalogi";
+
+    async Task CopyNalogi()
+    {
+        if (selectedPartner == null) return;
+
+        try
+        {
+            var obracunaniNalogi = await ObracunService.GetNalogiZaPartnerja(_leto, _mesec, selectedPartner.Sifra, 1);
+
+            if (obracunaniNalogi.Count == 0)
+            {
+                copyNalogiText = "Ni nalogov!";
+                StateHasChanged();
+                await Task.Delay(2000);
+                copyNalogiText = "CopyNalogi";
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<table border='1' cellpadding='4' cellspacing='0' style='border-collapse:collapse; font-family:Calibri,sans-serif; font-size:11pt;'>");
+            sb.Append("<tr style='background-color:#4472C4; color:white; font-weight:bold;'>");
+            sb.Append("<td colspan='5' style='padding:6px;'>");
+            sb.Append($"{selectedPartner.Sifra} – {System.Net.WebUtility.HtmlEncode(selectedPartner.NazivPartnerja ?? "")} &nbsp; ({_mesec}/{_leto})");
+            sb.Append("</td></tr>");
+            sb.Append("<tr style='background-color:#D6E4F0; font-weight:bold;'>");
+            sb.Append("<td>Datum</td><td>Začetek</td><td>Konec</td><td>Serviser</td><td>Opis</td></tr>");
+
+            foreach (var n in obracunaniNalogi)
+            {
+                sb.Append("<tr>");
+                sb.Append($"<td>{n.Datum:dd.MM.yyyy}</td>");
+                sb.Append($"<td>{n.ZacetekUra:HH:mm}</td>");
+                sb.Append($"<td>{n.KonecUra:HH:mm}</td>");
+                sb.Append($"<td>{System.Net.WebUtility.HtmlEncode(n.NazivPotnika ?? "")}</td>");
+                sb.Append($"<td style='white-space:pre-wrap;'>{System.Net.WebUtility.HtmlEncode(n.Opis ?? "")}</td>");
+                sb.Append("</tr>");
+            }
+
+            sb.Append("</table>");
+
+            await JS.InvokeVoidAsync("copyHtmlToClipboard", sb.ToString());
+
+            copyNalogiText = "Kopirano! ✓";
+            StateHasChanged();
+            await Task.Delay(2000);
+            copyNalogiText = "CopyNalogi";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri kopiranju: {ex.Message}";
+        }
+    }
+
+    // === Obdobje (mesec/leto dialog) ===
+    bool showObdobjePopup;
+    int _obdobjeMesec;
+    int _obdobjeLeto;
+
+    void OpenObdobje()
+    {
+        _obdobjeMesec = _mesec;
+        _obdobjeLeto = _leto;
+        showObdobjePopup = true;
+    }
+
+    async Task OnObdobjePotrdi()
+    {
+        showObdobjePopup = false;
+        _mesec = _obdobjeMesec;
+        _leto = _obdobjeLeto;
+
+        isLoading = true;
+        errorMessage = null;
+        selectedPartner = null;
+        selectedNalog = null;
+        selectedPogodba = null;
+        nalogi = new();
+        postavke = new();
+        pogodbe = new();
+        pogodbePozicije = new();
+        activeTabIndex = 0;
+        pokaziVse = false;
+
+        try
+        {
+            vsiPodatki = await ObracunService.GetOsnutkiAsync(_leto, _mesec);
+            podatki = vsiPodatki.Where(p => string.IsNullOrEmpty(p.PotrdilKdo)).ToList();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task PotrdiOsnutek()
+    {
+        if (selectedPartner == null || !string.IsNullOrEmpty(selectedPartner.PotrdilKdo)) return;
+
+        var partner = selectedPartner;
+        partner.PotrdilKdo = ObracunService.TrenutniUporabnik;
+        partner.PotrdilKdaj = DateTime.Now;
+
+        try
+        {
+            await ObracunService.PotrdiOsnutekAsync(_leto, _mesec, partner.Sifra);
+
+            // Skoči na naslednjo vrstico v gridu
+            if (podatki != null && gridPartnerji != null)
+            {
+                var naslednji = podatki
+                    .SkipWhile(p => p.Sifra != partner.Sifra)
+                    .Skip(1)
+                    .FirstOrDefault();
+
+                if (naslednji != null)
+                {
+                    await gridPartnerji.SetFocusedDataItemAsync(naslednji);
+                    await JS.InvokeVoidAsync("scrollFocusedRowIntoView");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            partner.PotrdilKdo = null;
+            partner.PotrdilKdaj = null;
+            errorMessage = $"Napaka pri potrjevanju: {ex.Message}";
+        }
+    }
+
+    void OnTogglePrikaziVse()
+    {
+        pokaziVse = !pokaziVse;
+        podatki = pokaziVse
+            ? vsiPodatki
+            : vsiPodatki?.Where(p => string.IsNullOrEmpty(p.PotrdilKdo)).ToList();
+    }
+
+    async Task OnPartnerSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is OsnutekPartnerDto row)
+        {
+            selectedPartner = row;
+            selectedNalog = null;
+            selectedPogodba = null;
+            selectedPredracun = null;
+            postavke = await ObracunService.GetPostavkeOsnutkaAsync(_leto, _mesec, row.Sifra);
+            await LoadTabData();
+        }
+    }
+
+    async Task OnTabChanged(int newIndex)
+    {
+        activeTabIndex = newIndex;
+        selectedNalog = null;
+        selectedPogodba = null;
+        selectedPredracun = null;
+        await LoadTabData();
+    }
+
+    async Task LoadTabData()
+    {
+        if (selectedPartner == null) return;
+
+        if (activeTabIndex == 1 || activeTabIndex == 2)
+        {
+            nalogi = new();
+            selectedNalog = null;
+            try
+            {
+                var obracunam = activeTabIndex == 1 ? 1 : 0;
+                nalogi = await ObracunService.GetNalogiZaPartnerja(_leto, _mesec, selectedPartner.Sifra, obracunam);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju nalogov: {ex.Message}";
+            }
+        }
+        else if (activeTabIndex == 3)
+        {
+            pogodbe = new();
+            pogodbePozicije = new();
+            selectedPogodba = null;
+            try
+            {
+                pogodbe = await ObracunService.GetPogodbeZaPartnerjaAsync(selectedPartner.Sifra, _leto, _mesec);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju pogodb: {ex.Message}";
+            }
+        }
+        else if (activeTabIndex == 4)
+        {
+            predracuni = new();
+            predracunPostavke = new();
+            selectedPredracun = null;
+            try
+            {
+                predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(selectedPartner.Sifra, _mesec, _leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju predračunov: {ex.Message}";
+            }
+        }
+        else if (activeTabIndex == 5)
+        {
+            racuni = new();
+            selectedRacunPostavke = new();
+            try
+            {
+                racuni = await ObracunService.GetRacuniZaPartnerjaAsync(selectedPartner.Sifra, false);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju računov: {ex.Message}";
+            }
+        }
+        else if (activeTabIndex == 6)
+        {
+            avansi = new();
+            selectedRacunPostavke = new();
+            try
+            {
+                avansi = await ObracunService.GetRacuniZaPartnerjaAsync(selectedPartner.Sifra, true);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju avansov: {ex.Message}";
+            }
+        }
+        else if (activeTabIndex == 7)
+        {
+            rocnePostavke = new();
+            try
+            {
+                rocnePostavke = await ObracunService.GetRocnePostavkeAsync(_leto, _mesec, selectedPartner.Sifra);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju ročnih postavk: {ex.Message}";
+            }
+        }
+    }
+
+    void OnNalogSelected(GridFocusedRowChangedEventArgs e)
+    {
+        selectedNalog = e.DataItem as NalogGridDto;
+    }
+
+    async Task OnPogodbaSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PogodbaGridDto pog)
+        {
+            selectedPogodba = pog;
+            try
+            {
+                pogodbePozicije = await ObracunService.GetPogodbePozicijeAsync(pog.Stevilka, pog.Leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju pozicij pogodbe: {ex.Message}";
+            }
+        }
+    }
+
+    async Task OnPredracunSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PredracunGridDto row)
+        {
+            selectedPredracun = row;
+            try
+            {
+                predracunPostavke = await ObracunService.GetPostavkePredracunaAsync(row.Stevilka, row.Leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju postavk predračuna: {ex.Message}";
+            }
+        }
+    }
+
+    async Task OnRacunSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is RacunGridDto row)
+        {
+            try
+            {
+                selectedRacunPostavke = await ObracunService.GetPostavkeRacunaAsync(row.Stevilka, row.Leto, row.TipRacuna);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju postavk računa: {ex.Message}";
+            }
+        }
+    }
+
+    async Task OnAvansSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is RacunGridDto row)
+        {
+            try
+            {
+                selectedRacunPostavke = await ObracunService.GetPostavkeRacunaAsync(row.Stevilka, row.Leto, row.TipRacuna);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka pri nalaganju postavk avansa: {ex.Message}";
+            }
+        }
+    }
+
+    // === Korektura (PartnerMinute za izbranega partnerja) ===
+    bool showKorekturaPopup;
+    string korekturaTitle = "";
+    List<PartnerMinuteGridDto>? korekturaData;
+
+    bool showKorekturaEditDialog;
+    string korekturaEditTitle = "";
+    string? korEditError;
+    int? korEditId;
+    decimal korEditMinut;
+    int korEditVeljavnost = 1;
+    int? korEditZacetekMesec;
+    int? korEditZacetekLeto;
+    string? korEditOpomba;
+
+    bool showKorekturaDeleteDialog;
+    int? korDeleteId;
+
+    string korekturaPartnerDisplay =>
+        selectedPartner != null ? $"{selectedPartner.Sifra} - {selectedPartner.NazivPartnerja}" : "";
+
+    bool showPorabaPopup;
+    string porabaTitle = "";
+    List<PorabaMesecDto>? porabaData;
+
+    void ShowPorabaMesecih(PartnerMinuteGridDto item)
+    {
+        porabaTitle = $"Poraba minut — ID {item.Id} ({item.Minut:N0} min)";
+        porabaData = item.PorabaPoMesecih
+            .Where(m => m.Leto < _leto || (m.Leto == _leto && m.Mesec < _mesec))
+            .ToList();
+        showPorabaPopup = true;
+    }
+
+    async Task OpenKorektura()
+    {
+        if (selectedPartner == null) return;
+        korekturaTitle = $"Partner minute — {selectedPartner.Sifra} {selectedPartner.NazivPartnerja}";
+        korekturaData = await PartnerMinuteService.GetByPartnerAsync(selectedPartner.Sifra, _mesec, _leto);
+        showKorekturaPopup = true;
+    }
+
+    void CloseKorektura()
+    {
+        showKorekturaPopup = false;
+    }
+
+    void KorekturaAdd()
+    {
+        korekturaEditTitle = "Nov vnos partner minut";
+        korEditError = null;
+        korEditId = null;
+        korEditMinut = 0;
+        korEditVeljavnost = 1;
+        korEditZacetekMesec = _mesec;
+        korEditZacetekLeto = _leto;
+        korEditOpomba = null;
+        showKorekturaEditDialog = true;
+    }
+
+    void KorekturaEdit(PartnerMinuteGridDto item)
+    {
+        korekturaEditTitle = "Uredi partner minute";
+        korEditError = null;
+        korEditId = item.Id;
+        korEditMinut = item.Minut;
+        korEditVeljavnost = item.VeljavnostMesecih;
+        korEditZacetekMesec = item.ZacetekMesec;
+        korEditZacetekLeto = item.ZacetekLeto;
+        korEditOpomba = item.Opomba;
+        showKorekturaEditDialog = true;
+    }
+
+    async Task KorekturaSave()
+    {
+        if (selectedPartner == null) return;
+
+        if (korEditMinut <= 0)
+        {
+            korEditError = "Število minut mora biti večje od 0.";
+            return;
+        }
+        korEditError = null;
+
+        try
+        {
+            if (korEditId.HasValue)
+            {
+                await PartnerMinuteService.UpdateAsync(korEditId.Value, selectedPartner.Sifra, korEditMinut, korEditVeljavnost, korEditOpomba, korEditZacetekMesec, korEditZacetekLeto);
+            }
+            else
+            {
+                await PartnerMinuteService.AddAsync(selectedPartner.Sifra, korEditMinut, korEditVeljavnost, korEditOpomba, korEditZacetekMesec, korEditZacetekLeto);
+            }
+
+            showKorekturaEditDialog = false;
+            korekturaData = await PartnerMinuteService.GetByPartnerAsync(selectedPartner.Sifra, _mesec, _leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri shranjevanju: {ex.Message}";
+        }
+    }
+
+    void KorekturaShowDelete(PartnerMinuteGridDto item)
+    {
+        korDeleteId = item.Id;
+        showKorekturaDeleteDialog = true;
+    }
+
+    async Task KorekturaDelete()
+    {
+        if (!korDeleteId.HasValue || selectedPartner == null) return;
+
+        try
+        {
+            await PartnerMinuteService.DeleteAsync(korDeleteId.Value);
+            showKorekturaDeleteDialog = false;
+            korekturaData = await PartnerMinuteService.GetByPartnerAsync(selectedPartner.Sifra, _mesec, _leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri brisanju: {ex.Message}";
+        }
+    }
+}

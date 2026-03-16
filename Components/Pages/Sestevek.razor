@@ -1,0 +1,143 @@
+@page "/sestevek"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@using Microsoft.AspNetCore.Components.Sections
+@inject ParametriService Parametri
+@inject ObracunService ObracunService
+
+<PageTitle>Seštevek</PageTitle>
+
+<style>
+    .sestevek-grid {
+        height: calc(100vh - 100px);
+    }
+</style>
+<SectionContent SectionName="PageHeaderExtra">
+    <span class="ms-3">Mesec obračuna: @mesec.ToString("D2")/@leto</span>
+</SectionContent>
+
+@if (isLoading)
+{
+    <p class="mt-3">Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+else
+{
+    <DxTabs>
+        <DxTabPage Text="Seštevek">
+            <div class="mt-3">
+                <DxGrid Data="@podatki"
+                        ShowAllRows="true"
+                        CssClass="w-100 sestevek-grid"
+                        ShowFooter="true"
+                        ShowFilterRow="true"
+                        AllowSort="true"
+                        KeyFieldName="@nameof(SestevekGridDto.Sifra)">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Sifra)" Caption="Šifra" Width="110px" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Naziv)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Enota)" Caption="Enota" Width="80px" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Kolicina)" Caption="Količina" Width="110px" DisplayFormat="N2" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Vrednost)" Caption="Vrednost" Width="120px" DisplayFormat="N2" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.Popust)" Caption="Popust" Width="110px" DisplayFormat="N2" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.NetoVrednost)" Caption="Neto vrednost" Width="130px" DisplayFormat="N2" />
+                        <DxGridDataColumn FieldName="@nameof(SestevekGridDto.StPartnerjev)" Caption="Št. partnerjev" Width="120px" />
+                    </Columns>
+                    <DetailRowTemplate Context="dataItem">
+                        @{
+                            var row = (SestevekGridDto)dataItem.DataItem;
+                        }
+                        <SestevekDetailGrid Artikel="@row.Sifra" />
+                    </DetailRowTemplate>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(SestevekGridDto.Sifra)" DisplayText="Artiklov: {0}" FooterColumnName="@nameof(SestevekGridDto.Sifra)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekGridDto.Kolicina)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekGridDto.Kolicina)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekGridDto.Vrednost)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekGridDto.Vrednost)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekGridDto.Popust)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekGridDto.Popust)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekGridDto.NetoVrednost)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekGridDto.NetoVrednost)" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekGridDto.StPartnerjev)" DisplayText="{0}" FooterColumnName="@nameof(SestevekGridDto.StPartnerjev)" />
+                    </TotalSummary>
+                </DxGrid>
+            </div>
+        </DxTabPage>
+
+        <DxTabPage Text="Graf">
+            <div style="padding:16px 0;">
+                <h6 class="text-center mb-3">Skupna neto vrednost: <strong>@skupnaNetoVrednost.ToString("N2") €</strong></h6>
+                <div style="min-height:500px;">
+                    <DxPieChart Data="@podatkiZaGraf"
+                                Height="500px"
+                                PaletteExtensionMode="ChartPaletteExtensionMode.Alternate">
+                        <DxPieChartTitle Text="Neto vrednost po artiklih" />
+                        <DxPieChartSeries ArgumentField="@((SestevekGridDto s) => s.Naziv)"
+                                          ValueField="@((SestevekGridDto s) => s.NetoVrednost)"
+                                          SummaryMethod="Enumerable.Sum">
+                            <DxChartSeriesLabel Visible="true" Position="RelativePosition.Outside" />
+                        </DxPieChartSeries>
+                        <DxChartTooltip Enabled="true">
+                            <div style="padding:4px 8px;">
+                                <b>@context.Point.Argument</b><br />
+                                Neto: @($"{context.Point.Value:N2}") €
+                            </div>
+                        </DxChartTooltip>
+                        <DxChartLegend Position="RelativePosition.Outside"
+                                       HorizontalAlignment="HorizontalAlignment.Right"
+                                       VerticalAlignment="VerticalEdge.Top"
+                                       Orientation="Orientation.Vertical" />
+                    </DxPieChart>
+                </div>
+            </div>
+        </DxTabPage>
+    </DxTabs>
+}
+
+@code {
+    int mesec;
+    int leto;
+    int steviloPartnerjev;
+    decimal skupnaNetoVrednost;
+    List<SestevekGridDto> podatki = new();
+    List<SestevekGridDto> podatkiZaGraf = new();
+    bool isLoading = true;
+    string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+        leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+        try
+        {
+            var (postavke, stPartnerjev) = await ObracunService.GetSestevekPoArtikluAsync(leto, mesec);
+            podatki = postavke;
+            steviloPartnerjev = stPartnerjev;
+            skupnaNetoVrednost = postavke.Sum(p => p.NetoVrednost);
+            podatkiZaGraf = postavke.OrderByDescending(p => p.NetoVrednost).ToList();
+            if (podatkiZaGraf.Count > 8)
+            {
+                var top8 = podatkiZaGraf.Take(8).ToList();
+                var ostali = podatkiZaGraf.Skip(8).ToList();
+                top8.Add(new SestevekGridDto
+                {
+                    Sifra = "OSTALI",
+                    Naziv = "Ostali",
+                    NetoVrednost = ostali.Sum(o => o.NetoVrednost)
+                });
+                podatkiZaGraf = top8;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri nalaganju podatkov: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

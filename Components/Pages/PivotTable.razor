@@ -1,0 +1,52 @@
+﻿@page "/pivottable"
+
+<PageTitle>Pivot Table</PageTitle>
+
+<h1>Pivot Table</h1>
+
+<DxPivotTable Data="@PivotTableData" CssClass="h-auto">
+    <Fields>
+        <DxPivotTableField Area="PivotTableArea.Row" Field="@nameof(SaleInfo.Region)" SortOrder="PivotTableSortOrder.Ascending" />
+        <DxPivotTableField Area="PivotTableArea.Row" Field="@nameof(SaleInfo.Country)" />
+        <DxPivotTableField Area="PivotTableArea.Column" Field="@nameof(SaleInfo.Date)" GroupInterval="PivotTableGroupInterval.DateYear" Caption="Year" />
+        <DxPivotTableField Area="PivotTableArea.Column" Field="@nameof(SaleInfo.Date)" GroupInterval="PivotTableGroupInterval.DateQuarter" Caption="Quarter">
+            <ValueTemplate>
+                <span>@($"Q{context.Text}")</span>
+            </ValueTemplate>
+        </DxPivotTableField>
+        <DxPivotTableField Area="PivotTableArea.Data" Field="@nameof(SaleInfo.Amount)" SummaryType="PivotTableSummaryType.Sum" CellFormat="C0"/>
+        <DxPivotTableField Area="PivotTableArea.Data" Field="@nameof(SaleInfo.OrderId)" SummaryType="PivotTableSummaryType.Count" Caption="Count" />
+    </Fields>
+</DxPivotTable>
+
+@code {
+    SaleInfo[]? PivotTableData;
+
+    protected override void OnInitialized() {
+        int id = 1;
+        var years = new[] { DateTime.Now.Year - 3, DateTime.Now.Year - 2, DateTime.Now.Year - 1 };
+
+        PivotTableData = Regions
+            .SelectMany(region => region.Value
+                .SelectMany(country => years
+                    .Select(year => new SaleInfo(
+                        id++,
+                        region.Key,
+                        country,
+                        Random.Shared.Next(500, 10000),
+                        new DateTime(year, Random.Shared.Next(1, 13), Random.Shared.Next(1, 28))
+                    ))))
+                    .ToArray();
+    }
+
+    public record SaleInfo(int OrderId, string Region, string Country, int Amount, DateTime Date);
+
+    public static readonly Dictionary<string, string[]> Regions = new() {
+        ["Africa"] = ["South Africa", "Egypt"],
+        ["Asia"] = ["UAE", "Japan", "India"],
+        ["Australia"] = ["Australia"],
+        ["Europe"] = ["United Kingdom", "Germany", "Spain"],
+        ["North America"] = ["USA", "Canada", "Mexico"],
+        ["South America"] = ["Brazil", "Argentina", "Chile"]
+    };
+}

@@ -1,0 +1,76 @@
+﻿@page "/treelist"
+
+<PageTitle>TreeList</PageTitle>
+
+<h1>TreeList</h1>
+
+<DxTreeList @ref="treeList"
+            Data="TreeListData"
+            KeyFieldName="ID"
+            ParentKeyFieldName="RegionID"
+            ShowAllRows="true"
+            ColumnResizeMode="TreeListColumnResizeMode.NextColumn"
+            TextWrapEnabled="false"
+            AutoExpandAllNodes="true"
+            CssClass="overflow-hidden">
+    <ToolbarTemplate>
+        <DxToolbar>
+            <DxToolbarItem Text="Izberi stolpce" 
+                          Click="ShowColumnChooser"
+                          RenderStyle="ButtonRenderStyle.Secondary" />
+        </DxToolbar>
+    </ToolbarTemplate>
+    <Columns>
+        <DxTreeListDataColumn FieldName="Region" AllowHide="false" Caption="Regija" />
+        <DxTreeListDataColumn FieldName="MarchSales" DisplayFormat="c0" Caption="Prodaja mar" />
+        <DxTreeListDataColumn FieldName="SeptemberSales" DisplayFormat="c0" Caption="Prodaja sep" />
+        <DxTreeListDataColumn FieldName="MarchChange" DisplayFormat="p2" Caption="Sprememba mar" />
+        <DxTreeListDataColumn FieldName="SeptemberChange" DisplayFormat="p2" Caption="Sprememba sep" />
+        <DxTreeListDataColumn FieldName="MarketShare" DisplayFormat="p0" Caption="Trzni delez" />
+    </Columns>
+</DxTreeList>
+
+@code {
+    IGrid? treeList;
+    SalesByRegion[]? TreeListData { get; set; }
+    
+    void ShowColumnChooser()
+    {
+        if (treeList != null)
+            treeList.ShowColumnChooser();
+    }
+
+    protected override void OnInitialized() {
+        int id = 0;
+        TreeListData = Regions
+            .Select(region => new { region.Key, region.Value, RegionId = ++id })
+            .SelectMany(region => new[] { GetSales(region.RegionId, 0, region.Key) }
+                .Concat(region.Value.Select(country => GetSales(++id, region.RegionId, country))))
+            .ToArray();
+    }
+
+    SalesByRegion GetSales(int id, int regionId, string region) {
+        decimal march = Random.Shared.Next(2000, 30000);
+        decimal september = march * Random.Shared.Next(90, 110) / 100;
+        return new SalesByRegion(
+            id,
+            regionId,
+            region,
+            MarchSales: march,
+            SeptemberSales: september,
+            MarchChange: Random.Shared.Next(100, 500) / 10000m,
+            SeptemberChange: Random.Shared.Next(100, 500) / 10000m,
+            MarketShare: Random.Shared.Next(10, 95) / 100.0);
+    }
+
+    record SalesByRegion(int ID, int RegionID, string Region, decimal MarchSales, decimal SeptemberSales, decimal MarchChange, decimal SeptemberChange, double MarketShare);
+
+    static readonly Dictionary<string, string[]> Regions = new() {
+        ["Africa"] = ["South Africa", "Egypt"],
+        ["Asia"] = ["UAE", "Japan", "India"],
+        ["Australia"] = ["Australia"],
+        ["Europe"] = ["United Kingdom", "Germany", "Spain"],
+        ["North America"] = ["USA", "Canada", "Mexico"],
+        ["South America"] = ["Brazil", "Argentina", "Chile"]
+    };
+}

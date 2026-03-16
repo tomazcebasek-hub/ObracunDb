@@ -1,0 +1,425 @@
+@page "/partner-minute"
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@using FirebirdSql.Data.FirebirdClient
+@inject PartnerMinuteService PartnerMinuteService
+@inject AuthService AuthService
+@inject ObracunDb.Data.FirebirdConnectionManager ConnectionManager
+
+<PageTitle>Partner minute</PageTitle>
+
+<style>
+    .action-btn {
+        color: #4fc3f7 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn:hover {
+        color: #81d4fa !important;
+    }
+    .action-btn-danger {
+        color: #e57373 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn-danger:hover {
+        color: #ef9a9a !important;
+    }
+    .action-btn-revizija {
+        color: #ba68c8 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn-revizija:hover {
+        color: #ce93d8 !important;
+    }
+</style>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+    <div class="d-flex gap-2 align-items-center mb-2" style="flex-shrink:0;">
+        <label style="white-space:nowrap;">Partner:</label>
+        <DxComboBox Data="@partnerji"
+                    @bind-Value="@selectedFilterPartner"
+                    TextFieldName="DisplayName"
+                    ValueFieldName="Sifra"
+                    NullText="Vsi partnerji"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                    CssClass="w-auto"
+                    Style="min-width:300px;"
+                    ListRenderMode="ListRenderMode.Virtual"
+                    FilteringMode="DataGridFilteringMode.Contains" />
+    </div>
+
+    <div style="flex:1; min-height:0;">
+    <DxGrid Data="@filteredData"
+            KeyFieldName="@nameof(PartnerMinuteGridDto.Id)"
+            ShowFilterRow="true"
+            PageSize="int.MaxValue"
+            PagerVisible="false"
+            CssClass="w-100 h-100">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Partner)" Caption="Šifra" Width="80px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.NazivPartnerja)" Caption="Partner" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy HH:mm" Width="150px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Minut)" Caption="Minut" DisplayFormat="N2" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.VeljavnostMesecih)" Caption="Veljavnost (mes.)" Width="130px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.ZacetekMesec)" Caption="Zaèetek mesec" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.ZacetekLeto)" Caption="Zaèetek leto" Width="110px" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Opomba)" Caption="Opomba" />
+            <DxGridDataColumn FieldName="@nameof(PartnerMinuteGridDto.Uporabnik)" Caption="Uporabnik" Width="120px" />
+            <DxGridDataColumn Caption="Akcije" Width="@(AuthService.JeDirektor ? "140px" : "100px")">
+                <CellDisplayTemplate>
+                    @{
+                        var item = (PartnerMinuteGridDto)context.DataItem;
+                    }
+                    <span class="action-btn" @onclick="@(() => ShowEditDialog(item))" title="Uredi">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                        </svg>
+                    </span>
+                    <span class="action-btn-danger" @onclick="@(() => ShowDeleteConfirm(item))" title="Izbriši">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                        </svg>
+                    </span>
+                    @if (AuthService.JeDirektor)
+                    {
+                        <span class="action-btn-revizija" @onclick="@(() => ShowRevizija(item.Id))" title="Revizijska sled">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                <path d="M8.515 1.019A7 7 0 0 0 8 1V0a8 8 0 0 1 .589.022l-.074.997zm2.004.45a7.003 7.003 0 0 0-.985-.299l.219-.976c.383.086.76.2 1.126.342l-.36.933zm1.37.71a7.01 7.01 0 0 0-.439-.27l.493-.87a8.025 8.025 0 0 1 .979.654l-.615.789a7.003 7.003 0 0 0-.418-.302zm1.834 1.79a6.99 6.99 0 0 0-.653-.796l.724-.69c.27.285.52.59.747.91l-.818.576zm.744 1.352a7.08 7.08 0 0 0-.214-.468l.893-.45a7.976 7.976 0 0 1 .45 1.088l-.95.313a7.023 7.023 0 0 0-.179-.483zm.53 2.507a6.991 6.991 0 0 0-.1-1.025l.985-.17c.067.386.106.778.116 1.17l-1 .025zm-.131 1.538c.033-.17.06-.339.081-.51l.993.123a7.957 7.957 0 0 1-.23 1.155l-.964-.267c.046-.165.086-.332.12-.501zm-.952 2.379c.184-.29.346-.594.486-.908l.914.405c-.16.36-.345.706-.555 1.038l-.845-.535zm-.964 1.205c.122-.122.239-.248.35-.378l.758.653a8.073 8.073 0 0 1-.401.432l-.707-.707z"/>
+                                <path d="M8 1a7 7 0 1 0 4.95 11.95l.707.707A8.001 8.001 0 1 1 8 0v1z"/>
+                                <path d="M7.5 3a.5.5 0 0 1 .5.5v5.21l3.248 1.856a.5.5 0 0 1-.496.868l-3.5-2A.5.5 0 0 1 7 9V3.5a.5.5 0 0 1 .5-.5z"/>
+                            </svg>
+                        </span>
+                    }
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </DxGrid>
+    </div>
+
+    <div class="d-flex gap-2 align-items-center" style="flex-shrink:0; padding:8px 0;">
+        <DxButton Text="Nov vnos" 
+                  Click="@ShowAddDialog" 
+                  RenderStyle="ButtonRenderStyle.Success" />
+    </div>
+    </div>
+}
+
+<DxPopup @bind-Visible="@showDialog"
+HeaderText="@dialogTitle"
+Width="600px"
+ShowFooter="true"
+CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Partner</label>
+            <DxComboBox Data="@vsiPartnerji"
+                        @bind-Value="@editPartner"
+                        TextFieldName="DisplayName"
+                        ValueFieldName="Sifra"
+                        NullText="Izberi partnerja..."
+                        CssClass="w-100"
+                        ListRenderMode="ListRenderMode.Virtual"
+                        FilteringMode="DataGridFilteringMode.Contains" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Minut</label>
+            <DxSpinEdit @bind-Value="@editMinut"
+                        MinValue="0m"
+                        CssClass="w-100" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Veljavnost (mesecih)</label>
+            <DxSpinEdit @bind-Value="@editVeljavnost"
+                        MinValue="1"
+                        CssClass="w-100" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Zaèetek mesec</label>
+            <DxSpinEdit @bind-Value="@editZacetekMesec"
+                        MinValue="1"
+                        MaxValue="12"
+                        CssClass="w-100" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Zaèetek leto</label>
+            <DxSpinEdit @bind-Value="@editZacetekLeto"
+                        MinValue="2020"
+                        MaxValue="2099"
+                        CssClass="w-100" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:flex-start; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap; padding-top:6px;">Opomba</label>
+            <DxMemo @bind-Text="@editOpomba"
+                    Rows="3"
+                    CssClass="w-100" />
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        @if (!string.IsNullOrEmpty(dialogError))
+        {
+            <span class="text-danger me-auto" style="font-size:0.85rem;">@dialogError</span>
+        }
+        <DxButton Text="Shrani" 
+                  Click="@SaveData" 
+                  RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Preklièi" 
+                  Click="@(() => { showDialog = false; dialogError = null; })" 
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@showDeleteDialog"
+HeaderText="Potrditev brisanja"
+Width="400px"
+ShowFooter="true"
+CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p>Ali ste preprièani, da želite izbrisati ta vnos?</p>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Izbriši" 
+                  Click="@DeleteData" 
+                  RenderStyle="ButtonRenderStyle.Danger" />
+        <DxButton Text="Preklièi" 
+                  Click="@(() => showDeleteDialog = false)" 
+                  RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@showRevizija"
+         HeaderText="@revizijaTitle"
+         Width="900px"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        @if (revizijaZapisi.Count > 0)
+        {
+            <DxGrid Data="@revizijaZapisi"
+                    KeyFieldName="@nameof(ObracunRevizija.Id)"
+                    ShowFilterRow="true"
+                    CssClass="w-100"
+                    PageSize="0"
+                    VirtualScrollingEnabled="true"
+                    style="max-height: 500px;">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Id)" Caption="ID" Width="60px" SortOrder="GridColumnSortOrder.Descending" />
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy HH:mm:ss" Width="155px" />
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Uporabnik)" Caption="Uporabnik" Width="110px" />
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.Polje)" Caption="Polje" Width="130px" />
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.StaraVrednost)" Caption="Stara vrednost" />
+                    <DxGridDataColumn FieldName="@nameof(ObracunRevizija.NovaVrednost)" Caption="Nova vrednost" />
+                </Columns>
+                <TotalSummary>
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(ObracunRevizija.Id)" DisplayText="Zapisov: {0}" />
+                </TotalSummary>
+            </DxGrid>
+        }
+        else
+        {
+            <p class="text-muted">Ni zapisov revizijske sledi za ta vnos.</p>
+        }
+    </BodyContentTemplate>
+</DxPopup>
+
+@code {
+    List<PartnerMinuteGridDto>? vsiPodatki;
+    List<PartnerFilterDto>? partnerji;
+    List<PartnerFilterDto>? vsiPartnerji;
+    bool isLoading = true;
+
+    int? _selectedFilterPartner;
+    int? selectedFilterPartner
+    {
+        get => _selectedFilterPartner;
+        set
+        {
+            _selectedFilterPartner = value;
+            StateHasChanged();
+        }
+    }
+
+    List<PartnerMinuteGridDto>? filteredData =>
+        selectedFilterPartner.HasValue
+            ? vsiPodatki?.Where(p => p.Partner == selectedFilterPartner.Value).ToList()
+            : vsiPodatki;
+
+    // Dialog
+    bool showDialog = false;
+    string dialogTitle = "";
+    string? dialogError;
+    int? editingId = null;
+    int editPartner;
+    decimal editMinut = 0;
+    int editVeljavnost = 1;
+    string? editOpomba;
+    int? editZacetekMesec;
+    int? editZacetekLeto;
+
+    // Delete dialog
+    bool showDeleteDialog = false;
+    int? deleteId = null;
+
+    // Revizija dialog
+    bool showRevizija = false;
+    string revizijaTitle = "";
+    List<ObracunRevizija> revizijaZapisi = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            vsiPodatki = await PartnerMinuteService.GetAllAsync();
+            partnerji = await PartnerMinuteService.GetPartnerjeAsync();
+            vsiPartnerji = await PartnerMinuteService.GetAllPartnerjeAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    void ShowAddDialog()
+    {
+        dialogTitle = "Nov vnos partner minut";
+        dialogError = null;
+        editingId = null;
+        editPartner = selectedFilterPartner ?? 0;
+        editMinut = 0;
+        editVeljavnost = 1;
+        editOpomba = null;
+        editZacetekMesec = DateTime.Now.Month;
+        editZacetekLeto = DateTime.Now.Year;
+        showDialog = true;
+    }
+
+    void ShowEditDialog(PartnerMinuteGridDto item)
+    {
+        dialogTitle = "Uredi partner minute";
+        dialogError = null;
+        editingId = item.Id;
+        editPartner = item.Partner;
+        editMinut = item.Minut;
+        editVeljavnost = item.VeljavnostMesecih;
+        editOpomba = item.Opomba;
+        editZacetekMesec = item.ZacetekMesec;
+        editZacetekLeto = item.ZacetekLeto;
+        showDialog = true;
+    }
+
+    void ShowDeleteConfirm(PartnerMinuteGridDto item)
+    {
+        deleteId = item.Id;
+        showDeleteDialog = true;
+    }
+
+    async Task SaveData()
+    {
+        if (editPartner == 0)
+        {
+            dialogError = "Izberite partnerja.";
+            return;
+        }
+        if (editMinut <= 0)
+        {
+            dialogError = "Število minut mora biti veèje od 0.";
+            return;
+        }
+        dialogError = null;
+
+        try
+        {
+            if (editingId.HasValue)
+            {
+                await PartnerMinuteService.UpdateAsync(editingId.Value, editPartner, editMinut, editVeljavnost, editOpomba, editZacetekMesec, editZacetekLeto);
+            }
+            else
+            {
+                await PartnerMinuteService.AddAsync(editPartner, editMinut, editVeljavnost, editOpomba, editZacetekMesec, editZacetekLeto);
+            }
+
+            showDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Napaka: {ex.Message}");
+        }
+    }
+
+    async Task DeleteData()
+    {
+        if (!deleteId.HasValue)
+            return;
+
+        try
+        {
+            await PartnerMinuteService.DeleteAsync(deleteId.Value);
+            showDeleteDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Napaka: {ex.Message}");
+        }
+    }
+
+    async Task ShowRevizija(int idVTabeli)
+    {
+        revizijaZapisi.Clear();
+        revizijaTitle = $"Revizijska sled — ID {idVTabeli}";
+
+        try
+        {
+            await using var connection = ConnectionManager.GetConnection();
+            await connection.OpenAsync();
+
+            await using var cmd = new FbCommand(@"
+                SELECT ID, DATUM, UPORABNIK, TABELA, POLJE, STARA_VREDNOST, NOVA_VREDNOST, KONTEKST, STEVILKA, LETO, ID_V_TABELI
+                FROM OBRACUN_REVIZIJA
+                WHERE TABELA = 'OBRACUN_MINUTE' AND ID_V_TABELI = @IdVTabeli
+                ORDER BY ID DESC", connection);
+
+            cmd.Parameters.AddWithValue("@IdVTabeli", idVTabeli);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                revizijaZapisi.Add(new ObracunRevizija
+                {
+                    Id = reader.GetInt32(0),
+                    Datum = reader.GetDateTime(1),
+                    Uporabnik = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                    Tabela = reader.IsDBNull(3) ? "" : reader.GetString(3).Trim(),
+                    Polje = reader.IsDBNull(4) ? "" : reader.GetString(4).Trim(),
+                    StaraVrednost = reader.IsDBNull(5) ? null : reader.GetString(5).Trim(),
+                    NovaVrednost = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
+                    Kontekst = reader.IsDBNull(7) ? null : reader.GetString(7).Trim(),
+                    Stevilka = reader.IsDBNull(8) ? null : reader.GetString(8).Trim(),
+                    Leto = reader.IsDBNull(9) ? null : reader.GetInt32(9),
+                    IdVTabeli = reader.IsDBNull(10) ? null : reader.GetInt32(10)
+                });
+            }
+        }
+        catch { }
+
+        showRevizija = true;
+    }
+}

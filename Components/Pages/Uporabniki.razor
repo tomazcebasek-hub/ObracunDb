@@ -1,0 +1,303 @@
+@page "/uporabniki"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject UporabnikService UporabnikService
+@inject AuthService AuthService
+
+<PageTitle>Uporabniki</PageTitle>
+
+@if (!imaDovoljenDostop)
+{
+    <div class="alert alert-danger">Nimate dovoljenja za dostop do te strani.</div>
+}
+else if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else
+{
+    <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+        <DxGrid Data="@uporabniki"
+                KeyFieldName="@nameof(UporabnikGridDto.Id)"
+                ShowAllRows="true"
+                FocusedRowEnabled="true"
+                CssClass="w-100">
+            <Columns>
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.Id)" Caption="ID" Width="60px" />
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.UporabniskoIme)" Caption="Uporabniško ime" />
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.VlogaText)" Caption="Vloga" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.Aktiven)" Caption="Aktiven" Width="80px">
+                    <CellDisplayTemplate>
+                        @{ var akt = (bool)(context.Value ?? false); }
+                        <span style="color: @(akt ? "#28a745" : "#dc3545"); font-weight:600;">@(akt ? "Da" : "Ne")</span>
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.PrvaPrijava)" Caption="Geslo" Width="110px">
+                    <CellDisplayTemplate>
+                        @{ var pp = (bool)(context.Value ?? false); }
+                        @(pp ? "⚠️ Začasno" : "✓ Nastavljeno")
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.DatumUstvarjen)" Caption="Ustvarjen" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.DatumZadnjaPrijava)" Caption="Zadnja prijava" DisplayFormat="dd.MM.yyyy HH:mm" Width="145px" />
+                <DxGridDataColumn Caption="" Width="160px">
+                    <CellDisplayTemplate Context="cellCtx">
+                        @{
+                            var item = (UporabnikGridDto)cellCtx.DataItem;
+                        }
+                        <a href="javascript:void(0)" @onclick="@(() => ShowEdit(item))" class="me-2" title="Uredi">✏️</a>
+                        <a href="javascript:void(0)" @onclick="@(() => ShowResetPassword(item))" class="me-2" title="Ponastavi geslo">🔑</a>
+                        <a href="javascript:void(0)" @onclick="@(() => ShowDelete(item))" style="color:#e57373;" title="Izbriši">🗑️</a>
+                    </CellDisplayTemplate>
+                </DxGridDataColumn>
+            </Columns>
+        </DxGrid>
+
+        <div class="d-flex gap-2 mt-2">
+            <DxButton Text="Nov uporabnik" RenderStyle="ButtonRenderStyle.Success" Click="@ShowAdd" />
+        </div>
+    </div>
+}
+
+@* === Vnos / urejanje dialog === *@
+<DxPopup @bind-Visible="@showEditDialog"
+         HeaderText="@editTitle"
+         Width="500px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Uporabniško ime</label>
+            <DxTextBox @bind-Text="@editIme" CssClass="w-100" NullText="Vpišite uporabniško ime" />
+        </div>
+        <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+            <label style="min-width:140px; white-space:nowrap;">Vloga</label>
+            <DxComboBox Data="@vlogeList"
+                        @bind-Value="@editVloga"
+                        TextFieldName="Text"
+                        ValueFieldName="Value"
+                        CssClass="w-100" />
+        </div>
+        @if (editId.HasValue)
+        {
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px; white-space:nowrap;">Aktiven</label>
+                <DxCheckBox @bind-Checked="@editAktiven" />
+            </div>
+        }
+        @if (!editId.HasValue)
+        {
+            <div class="alert alert-info py-2 mt-2" style="font-size:0.85rem;">
+                Uporabnik bo dobil začasno geslo <strong>123456</strong>.
+                Ob prvi prijavi ga bo moral spremeniti.
+            </div>
+        }
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        @if (!string.IsNullOrEmpty(editError))
+        {
+            <span class="text-danger me-auto" style="font-size:0.85rem;">@editError</span>
+        }
+        <DxButton Text="Shrani" Click="@SaveUser" RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Prekliči" Click="@(() => { showEditDialog = false; editError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@* === Ponastavi geslo === *@
+<DxPopup @bind-Visible="@showResetDialog"
+         HeaderText="Ponastavi geslo"
+         Width="420px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p>Geslo uporabnika <strong>@resetIme</strong> bo ponastavljeno na <strong>123456</strong>.</p>
+        <p class="text-muted" style="font-size:0.85rem;">Ob naslednji prijavi bo moral uporabnik geslo spremeniti.</p>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Ponastavi geslo" Click="@ResetPassword" RenderStyle="ButtonRenderStyle.Warning" />
+        <DxButton Text="Prekliči" Click="@(() => showResetDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@* === Brisanje === *@
+<DxPopup @bind-Visible="@showDeleteDialog"
+         HeaderText="Brisanje uporabnika"
+         Width="420px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p>Ali ste prepričani, da želite izbrisati uporabnika <strong>@deleteIme</strong>?</p>
+        <p class="text-danger" style="font-size:0.85rem;">Tega dejanja ni mogoče razveljaviti.</p>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Izbriši" Click="@DeleteUser" RenderStyle="ButtonRenderStyle.Danger" />
+        <DxButton Text="Prekliči" Click="@(() => showDeleteDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@code {
+    List<UporabnikGridDto>? uporabniki;
+    bool isLoading = true;
+    bool imaDovoljenDostop;
+
+    // Vloge za ComboBox
+    List<VlogaItem> vlogeList = new()
+    {
+        new() { Value = (int)UporabnikVloga.Admin, Text = "Admin" },
+        new() { Value = (int)UporabnikVloga.Vodja, Text = "Vodja" },
+        new() { Value = (int)UporabnikVloga.Potrjevalec, Text = "Potrjevalec" }
+    };
+
+    // Edit dialog
+    bool showEditDialog;
+    string editTitle = "";
+    string? editError;
+    int? editId;
+    string? editIme;
+    int editVloga;
+    bool editAktiven = true;
+
+    // Reset password dialog
+    bool showResetDialog;
+    string? resetIme;
+    int? resetId;
+
+    // Delete dialog
+    bool showDeleteDialog;
+    string? deleteIme;
+    int? deleteId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = AuthService.CurrentUser;
+        imaDovoljenDostop = user != null &&
+            (user.VlogaEnum == UporabnikVloga.Admin || user.VlogaEnum == UporabnikVloga.Vodja);
+
+        if (imaDovoljenDostop)
+        {
+            await LoadData();
+        }
+        else
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            uporabniki = await UporabnikService.GetAllAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    void ShowAdd()
+    {
+        editTitle = "Nov uporabnik";
+        editError = null;
+        editId = null;
+        editIme = null;
+        editVloga = (int)UporabnikVloga.Potrjevalec;
+        editAktiven = true;
+        showEditDialog = true;
+    }
+
+    void ShowEdit(UporabnikGridDto item)
+    {
+        editTitle = "Uredi uporabnika";
+        editError = null;
+        editId = item.Id;
+        editIme = item.UporabniskoIme;
+        editVloga = (int)item.Vloga;
+        editAktiven = item.Aktiven;
+        showEditDialog = true;
+    }
+
+    async Task SaveUser()
+    {
+        if (string.IsNullOrWhiteSpace(editIme))
+        {
+            editError = "Uporabniško ime je obvezno.";
+            return;
+        }
+
+        if (await UporabnikService.ExistsAsync(editIme, editId))
+        {
+            editError = "Uporabniško ime že obstaja.";
+            return;
+        }
+
+        editError = null;
+
+        try
+        {
+            if (editId.HasValue)
+            {
+                await UporabnikService.UpdateAsync(editId.Value, editIme, (UporabnikVloga)editVloga, editAktiven);
+            }
+            else
+            {
+                await UporabnikService.CreateAsync(editIme, (UporabnikVloga)editVloga);
+            }
+
+            showEditDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Napaka: {ex.Message}";
+        }
+    }
+
+    void ShowResetPassword(UporabnikGridDto item)
+    {
+        resetId = item.Id;
+        resetIme = item.UporabniskoIme;
+        showResetDialog = true;
+    }
+
+    async Task ResetPassword()
+    {
+        if (!resetId.HasValue) return;
+
+        await UporabnikService.ResetPasswordAsync(resetId.Value);
+        showResetDialog = false;
+        await LoadData();
+    }
+
+    void ShowDelete(UporabnikGridDto item)
+    {
+        deleteId = item.Id;
+        deleteIme = item.UporabniskoIme;
+        showDeleteDialog = true;
+    }
+
+    async Task DeleteUser()
+    {
+        if (!deleteId.HasValue) return;
+
+        try
+        {
+            await UporabnikService.DeleteAsync(deleteId.Value);
+            showDeleteDialog = false;
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            editError = $"Napaka pri brisanju: {ex.Message}";
+        }
+    }
+
+    class VlogaItem
+    {
+        public int Value { get; set; }
+        public string Text { get; set; } = "";
+    }
+}

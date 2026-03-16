@@ -1,0 +1,100 @@
+@using ObracunDb.Services
+@using ObracunDb.Data
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject AuthService AuthService
+@inject NavigationManager Navigation
+@inject ConnectionTestResult ConnectionTest
+@inject ProtectedLocalStorage LocalStorage
+@inject ProtectedSessionStorage SessionStorage
+@implements IDisposable
+
+@if (!ConnectionTest.IsSuccess)
+{
+    <ConnectionErrorPanel TestResult="@ConnectionTest" />
+}
+else if (!_sessionChecked)
+{
+    <p>Preverjam prijavo...</p>
+}
+else if (shouldRender)
+{
+    <RouteView RouteData="RouteData" DefaultLayout="typeof(Layout.MainLayout)" />
+}
+
+@code {
+    [Parameter]
+    public RouteData RouteData { get; set; } = default!;
+
+    private bool shouldRender = false;
+    private bool _sessionChecked = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_sessionChecked && ConnectionTest.IsSuccess)
+        {
+            if (!AuthService.IsAuthenticated)
+            {
+                await AuthService.RestoreSessionAsync(LocalStorage, SessionStorage);
+            }
+
+            _sessionChecked = true;
+            CheckAuthentication();
+            StateHasChanged();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!ConnectionTest.IsSuccess)
+            return;
+
+        // Če smo že preverili sejo, takoj preveri avtentikacijo (navigacija med stranmi)
+        if (_sessionChecked)
+        {
+            CheckAuthentication();
+        }
+
+        AuthService.OnAuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    private void CheckAuthentication()
+    {
+        var pageType = RouteData.PageType;
+
+        // Login stran je vedno dostopna
+        if (pageType == typeof(Pages.LoginPage))
+        {
+            shouldRender = true;
+            return;
+        }
+
+        // Neprijavljen → na login
+        if (!AuthService.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login", true);
+            shouldRender = false;
+            return;
+        }
+
+        // Prva prijava → prisili spremembo gesla
+        if (AuthService.MustChangePassword && pageType != typeof(Pages.SpremembaGesla))
+        {
+            Navigation.NavigateTo("/sprememba-gesla", true);
+            shouldRender = false;
+            return;
+        }
+
+        shouldRender = true;
+    }
+
+    private void OnAuthStateChanged()
+    {
+        CheckAuthentication();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnAuthenticationStateChanged -= OnAuthStateChanged;
+    }
+}

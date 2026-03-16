@@ -1,0 +1,873 @@
+@page "/potrjevanje"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ParametriService Parametri
+@inject ObracunService ObracunService
+@inject ArtikelService ArtikelService
+@inject ObracunIzvedbaService ObracunIzvedi
+
+<PageTitle>Potrjevanje nalogov</PageTitle>
+
+<style>
+    .action-btn-danger {
+        color: #e57373 !important;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 4px 8px;
+    }
+    .action-btn-danger:hover {
+        color: #ef9a9a !important;
+    }
+</style>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+        <!-- Zgornji del -->
+        <div style="flex: 1; display: flex; gap: 8px; min-height: 0;">
+            <!-- Levo: grid nalogov -->
+            <div style="flex: 1; overflow: hidden;">
+                <DxGrid @ref="gridNalogi"
+                        Data="@filteredNalogi"
+                        KeyFieldName="@nameof(PotrjevanjeNalogDto.Key)"
+                        ShowFilterRow="true"
+                        FocusedRowEnabled="true"
+                        FocusedRowChanged="@OnNalogSelected"
+                        AllowSort="true"
+                        CssClass="w-100"
+                        PageSize="0"
+                        VirtualScrollingEnabled="true"
+                        style="height: 100%">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Stevilka)" Caption="Številka" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Partner)" Caption="Šifra" Width="60px" SortIndex="0" SortOrder="GridColumnSortOrder.Ascending" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.NazivPartnerja)" Caption="Partner" Width="180px" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" SortIndex="1" SortOrder="GridColumnSortOrder.Ascending" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.ZacetekUra)" Caption="Začetek" DisplayFormat="HH:mm" Width="65px" SortIndex="2" SortOrder="GridColumnSortOrder.Ascending" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.KonecUra)" Caption="Konec" DisplayFormat="HH:mm" Width="65px" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Trajanje)" Caption="Traj." Width="55px" />
+                        <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Pregledan)" Caption="Potrjen" Width="55px">
+                                <CellDisplayTemplate>
+                                    @{ var preg = (bool)(context.Value ?? false); }
+                                    @(preg ? "Da" : "")
+                                </CellDisplayTemplate>
+                            </DxGridDataColumn>
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.KajObracunam)" Caption="Kaj obr." Width="80px">
+                                <CellDisplayTemplate>
+                                    @{ var kaj = (KajObracunam)(context.Value ?? KajObracunam.Nedefinirano); }
+                                    @(kaj.ToText())
+                                </CellDisplayTemplate>
+                            </DxGridDataColumn>
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PotrjevanjeNalogDto.Stevilka)" DisplayText="Nalogov: {0}" />
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PotrjevanjeNalogDto.Trajanje)" DisplayText="{0}" />
+                    </TotalSummary>
+                </DxGrid>
+            </div>
+
+            <!-- Desno: info panel -->
+            <div style="flex: 1; padding: 8px; font-size: 0.85rem; overflow-y: auto;">
+                @if (selectedNalog != null)
+                {
+                    <table class="table table-sm table-borderless mb-2" style="font-size: 0.85rem;">
+                        <tbody>
+                            <tr><td style="width:100px;"><strong>Partner</strong></td><td>@selectedNalog.Partner — @selectedNalog.NazivPartnerja</td></tr>
+                            <tr><td><strong>Naslov</strong></td><td>@selectedNalog.NaslovPartnerja</td></tr>
+                            <tr><td><strong>Pošta</strong></td><td>@selectedNalog.PostaPartnerja</td></tr>
+                            @if (selectedNalog.Prodajalna > 0)
+                            {
+                                <tr><td><strong>Prodajalna</strong></td><td>@selectedNalog.Prodajalna — @selectedNalog.NazivProdajalne</td></tr>
+                            }
+                            <tr><td><strong>Serviser</strong></td><td>@(selectedNalog.NazivPotnika ?? selectedNalog.Potnik)</td></tr>
+                            <tr><td><strong>Trajanje</strong></td><td>@selectedNalog.Trajanje min</td></tr>
+                            <tr>
+                                <td><strong>Kilometri</strong></td>
+                                <td>
+                                    @if (selectedNalog.Kilometri.HasValue && selectedNalog.Kilometri > 0)
+                                    {
+                                        @(selectedNalog.Kilometri.Value.ToString("N0"))
+                                        @if (!NalogHelper.SeObracunaKilometrina(selectedNalog.Stevilka))
+                                        {
+                                            <span class="text-muted"> (se ne obračuna)</span>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span>—</span>
+                                    }
+                                </td>
+                            </tr>
+                            <tr><td><strong>Pogodbe</strong></td><td>@(selectedNalog.Pogodbe ?? "—")</td></tr>
+                        </tbody>
+                    </table>
+                    <hr class="my-1" />
+                    <div style="white-space: pre-wrap; font-family: monospace; font-size: 0.8rem;">@selectedNalog.Opis</div>
+                }
+                else
+                {
+                    <p class="text-muted">Izberite nalog v gridu.</p>
+                }
+            </div>
+        </div>
+
+        <hr style="margin: 0;" />
+
+        <!-- Spodnji del -->
+        <div style="flex: 1; display: flex; gap: 8px; min-height: 0;">
+            <!-- Levo: postavke naloga -->
+            <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+                <span style="margin:0; padding:0; line-height:1; height:16px;">Postavke naloga</span>
+                @if (selectedNalog != null)
+                {
+                    <div style="flex: 1; overflow: hidden;">
+                    <DxGrid Data="@nalogPostavke"
+                            KeyFieldName="@nameof(PotrjevanjeNalogPozDto.Zs)"
+                            CssClass="w-100"
+                            PageSize="0"
+                            VirtualScrollingEnabled="true"
+                            style="height: 100%">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Sifra)" Caption="Šifra" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.NazivArtikla)" Caption="Naziv" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Enota)" Caption="Enota" Width="60px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="85px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Cena)" Caption="Cena" DisplayFormat="N2" Width="85px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Rabat)" Caption="Rabat" DisplayFormat="N2" Width="65px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.Vrednost)" Caption="Vrednost" DisplayFormat="N2" Width="95px" />
+                            <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogPozDto.JeRocni)" Caption=" " Width="36px" AllowSort="false" TextAlignment="GridTextAlignment.Center">
+                                <CellDisplayTemplate>
+                                    @{
+                                        var poz = (PotrjevanjeNalogPozDto)context.DataItem;
+                                        if (poz.JeRocni)
+                                        {
+                                            <span class="action-btn-danger" @onclick="@(() => OnDeleteRocnaPostavka(poz))" title="Izbriši ročno postavko">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                                                    <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                                    <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                                </svg>
+                                            </span>
+                                        }
+                                    }
+                                </CellDisplayTemplate>
+                            </DxGridDataColumn>
+                        </Columns>
+                    </DxGrid>
+                    </div>
+                }
+            </div>
+
+            <!-- Desno: predračuni + postavke predračuna -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 0;">
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+                    <span style="margin:0; padding:0; line-height:1; height:16px;">Predračuni</span>
+                    @if (selectedNalog != null)
+                    {
+                        <div style="flex: 1; overflow: hidden;">
+                        <DxGrid Data="@predracuni"
+                                KeyFieldName="@nameof(PredracunGridDto.Key)"
+                                FocusedRowEnabled="true"
+                                FocusedRowChanged="@OnPredracunSelected"
+                                CssClass="w-100"
+                                PageSize="0"
+                                VirtualScrollingEnabled="true"
+                                style="height: 100%">
+                            <Columns>
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Stevilka)" Caption="Številka" Width="90px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Leto)" Caption="Leto" Width="55px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekBrezDdv)" Caption="Znesek" DisplayFormat="N2" Width="95px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Minute)" Caption="Min" Width="55px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.MinutePreostalo)" Caption="Preost." Width="65px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Status" Width="80px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Povezan)" Caption="Povezan" Width="65px" AllowSort="false" TextAlignment="GridTextAlignment.Center">
+                                    <CellDisplayTemplate>
+                                        @{
+                                            var pred = (PredracunGridDto)context.DataItem;
+                                            <DxCheckBox Checked="@pred.Povezan"
+                                                        CheckedChanged="@((bool v) => { pred.Povezan = v; })" />
+                                        }
+                                    </CellDisplayTemplate>
+                                </DxGridDataColumn>
+                            </Columns>
+                        </DxGrid>
+                        </div>
+                    }
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0;">
+                    <span style="margin:0; padding:0; line-height:1; height:16px;">Postavke predračuna</span>
+                    @if (selectedPredracun != null)
+                    {
+                        <div style="flex: 1; overflow: hidden;">
+                        <DxGrid Data="@predracunPostavke"
+                                KeyFieldName="@nameof(PredracunKnjizbaGridDto.Zs)"
+                                CssClass="w-100"
+                                PageSize="0"
+                                VirtualScrollingEnabled="true"
+                                style="height: 100%">
+                            <Columns>
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.SifraArtikla)" Caption="Šifra" Width="90px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.NazivArtikla)" Caption="Naziv" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="85px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="85px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Rabat1)" Caption="Rabat" DisplayFormat="N2" Width="65px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaVrednost)" Caption="Vrednost" DisplayFormat="N2" Width="95px" />
+                            </Columns>
+                        </DxGrid>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Vrstica z gumbi -->
+        <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0; flex-shrink: 0; font-size: 0.85rem;">
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <DxCheckBox Checked="@samoNepotrjeni"
+                            CheckedChanged="@((bool v) => { samoNepotrjeni = v; })" />
+                <span>Samo nepotrjeni</span>
+            </div>
+            @if (selectedNalog != null)
+            {
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    <DxCheckBox Checked="@selectedNalog.PolovicnaKilometrina"
+                                CheckedChanged="@((bool v) => OnPolovicnaChanged(v))" />
+                    <span>Pol. km</span>
+                </div>
+                <DxComboBox Data="@kajObracunamOptions"
+                            Value="@selectedNalog.KajObracunam"
+                            ValueChanged="@((KajObracunam v) => OnKajObracunamChanged(v))"
+                            TextFieldName="Text"
+                            ValueFieldName="Value"
+                            NullText="Kaj obračunam..."
+                            style="width: 160px;" />
+                <DxButton Text="Vnos artikla" RenderStyle="ButtonRenderStyle.Warning" Click="@OpenVnosArtikla" />
+                <DxButton Text="Poveži predračune" RenderStyle="ButtonRenderStyle.Success" Click="@OpenPoveziPredracune" />
+                <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" Click="@OpenStatistika" />
+                <DxButton Text="Račun" RenderStyle="ButtonRenderStyle.Danger" Click="@OnRacunClick" />
+            }
+            <div style="margin-left: auto; display: flex; gap: 6px;">
+                <DxButton Text="Nič + Potrdi" RenderStyle="ButtonRenderStyle.Dark" Click="@OnNicPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
+                <DxButton Text="Potrdi" RenderStyle="ButtonRenderStyle.Primary" Click="@OnPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
+                <DxButton Text="Pobriši potrditev" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnPobrisiPotrditev" Enabled="@(selectedNalog != null && selectedNalog.Pregledan)" />
+                <DxButton Text="Potrdi + naslednji" RenderStyle="ButtonRenderStyle.Info" Click="@OnPotrdiInNaslednji" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
+            </div>
+        </div>
+    </div>
+
+    @* === Vnos artikla popup === *@
+    <DxPopup @bind-Visible="@showVnosArtikla"
+             HeaderText="Vnos artikla"
+             Width="600px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            @if (selectedNalog != null)
+            {
+                <div class="mb-2" style="font-size:0.85rem; color:#666;">
+                    Partner: <strong>@selectedNalog.Partner — @selectedNalog.NazivPartnerja</strong>,
+                    Obdobje: <strong>@selectedNalog.Datum.Month/@selectedNalog.Datum.Year</strong>
+                </div>
+            }
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:100px; white-space:nowrap;">Artikel</label>
+                <DxComboBox Data="@artikli"
+                            Value="@vnosArtikelSifra"
+                            ValueChanged="@((string v) => OnVnosArtikelChanged(v))"
+                            TextFieldName="DisplayName"
+                            ValueFieldName="Sifra"
+                            NullText="Izberi artikel..."
+                            CssClass="w-100"
+                            FilteringMode="DataGridFilteringMode.Contains" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:100px; white-space:nowrap;">Količina</label>
+                <DxSpinEdit @bind-Value="@vnosKolicina" MinValue="0m" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:100px; white-space:nowrap;">Rabat (%)</label>
+                <DxSpinEdit @bind-Value="@vnosRabat" MinValue="0m" MaxValue="100m" CssClass="w-100" />
+            </div>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            @if (!string.IsNullOrEmpty(vnosError))
+            {
+                <span class="text-danger me-auto" style="font-size:0.85rem;">@vnosError</span>
+            }
+            <DxButton Text="Shrani" Click="@SaveVnosArtikla" RenderStyle="ButtonRenderStyle.Primary" />
+            <DxButton Text="Prekliči" Click="@(() => { showVnosArtikla = false; vnosError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Statistika popup === *@
+    <DxPopup @bind-Visible="@showStatistika"
+             HeaderText="Statistika nalogov"
+             Width="550px"
+             CloseOnOutsideClick="true"
+             ShowFooter="true">
+        <BodyContentTemplate>
+            @if (statistikaData != null)
+            {
+                var maxSkupaj = statistikaData.Max(s => s.Skupaj);
+                @foreach (var stat in statistikaData)
+                {
+                    var barWidth = maxSkupaj > 0 ? (double)stat.Skupaj / maxSkupaj * 100 : 0;
+                    <div class="mb-3">
+                        <div style="font-weight:bold; margin-bottom:4px;">@stat.Obdobje — @stat.Skupaj nalogov</div>
+                        <div style="width:@(barWidth.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; display:flex; height:28px; border-radius:4px; overflow:hidden; border:1px solid #ccc;">
+                            @if (stat.Potrjeni > 0)
+                            {
+                                <div style="width:@(stat.PctPotrjeni.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; background:#4CAF50; height:100%; display:flex; align-items:center; justify-content:center; color:white; font-size:0.75rem; font-weight:bold;"
+                                     title="Potrjeni: @stat.Potrjeni (@(stat.PctPotrjeni.ToString("F0")) %)">
+                                    @if (stat.PctPotrjeni >= 15) { <span>@stat.Potrjeni</span> }
+                                </div>
+                            }
+                            @if (stat.Nepotrjeni > 0)
+                            {
+                                <div style="width:@(stat.PctNepotrjeni.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; background:#EF5350; height:100%; display:flex; align-items:center; justify-content:center; color:white; font-size:0.75rem; font-weight:bold;"
+                                     title="Nepotrjeni: @stat.Nepotrjeni (@(stat.PctNepotrjeni.ToString("F0")) %)">
+                                    @if (stat.PctNepotrjeni >= 15) { <span>@stat.Nepotrjeni</span> }
+                                </div>
+                            }
+                        </div>
+                        <div style="display:flex; gap:16px; font-size:0.75rem; color:#666; margin-top:3px;">
+                            <span>🟢 Potrjeni: @stat.Potrjeni (@(stat.PctPotrjeni.ToString("F0")) %)</span>
+                            <span>🔴 Nepotrjeni: @stat.Nepotrjeni (@(stat.PctNepotrjeni.ToString("F0")) %)</span>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <p class="text-muted">Ni podatkov.</p>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showStatistika = false)" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Račun popup === *@
+    <DxPopup @bind-Visible="@showRacun"
+             HeaderText="@racunHeader"
+             Width="850px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            @if (racunIsLoading)
+            {
+                <p>Izračunavam...</p>
+            }
+            else if (racunError != null)
+            {
+                <div class="alert alert-danger">@racunError</div>
+            }
+            else if (racunPostavke != null)
+            {
+                @if (!string.IsNullOrEmpty(racunMessage))
+                {
+                    <div class="alert alert-success mb-2" style="font-size:0.85rem;">@racunMessage</div>
+                }
+                <DxGrid Data="@racunPostavke"
+                        KeyFieldName="@nameof(OsnutekPosGridDto.Zs)"
+                        CssClass="w-100"
+                        PageSize="0"
+                        VirtualScrollingEnabled="true"
+                        style="height: 400px;">
+                    <Columns>
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Artikel)" Caption="Šifra" Width="90px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.NazivArtikla)" Caption="Naziv" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.EnotaArtikla)" Caption="Enota" Width="60px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="85px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Cena)" Caption="Cena" DisplayFormat="N2" Width="85px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Rabat)" Caption="Rabat" DisplayFormat="N1" Width="65px" />
+                        <DxGridDataColumn FieldName="@nameof(OsnutekPosGridDto.Vrednost)" Caption="Vrednost" DisplayFormat="N2" Width="95px" />
+                    </Columns>
+                    <TotalSummary>
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(OsnutekPosGridDto.Vrednost)" DisplayText="Skupaj: {0:N2}" />
+                    </TotalSummary>
+                </DxGrid>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showRacun = false)" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    @* === Poveži predračune popup === *@
+    <DxPopup @bind-Visible="@showPoveziPredracune"
+             HeaderText="Poveži predračune"
+             Width="550px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            @if (povezaveSpremembe != null && povezaveSpremembe.Count > 0)
+            {
+                <table class="table table-sm" style="font-size:0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Predračun</th>
+                            <th>Leto</th>
+                            <th>Sprememba</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var s in povezaveSpremembe)
+                        {
+                            <tr>
+                                <td>@s.Stevilka</td>
+                                <td>@s.Leto</td>
+                                <td>
+                                    @if (s.JeDodana)
+                                    {
+                                        <span class="text-success">+ Poveži</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-danger">− Odveži</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">Ni sprememb.</p>
+            }
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            @if (!string.IsNullOrEmpty(povezaveError))
+            {
+                <span class="text-danger me-auto" style="font-size:0.85rem;">@povezaveError</span>
+            }
+            <DxButton Text="Potrdi" Click="@SavePovezavePredracunov" RenderStyle="ButtonRenderStyle.Primary"
+                      Enabled="@(povezaveSpremembe != null && povezaveSpremembe.Count > 0)" />
+            <DxButton Text="Prekliči" Click="@(() => { showPoveziPredracune = false; povezaveError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+}
+
+@code {
+    IGrid? gridNalogi;
+    List<PotrjevanjeNalogDto> nalogi = new();
+    List<PotrjevanjeNalogPozDto> nalogPostavke = new();
+    List<PredracunGridDto> predracuni = new();
+    List<PredracunKnjizbaGridDto> predracunPostavke = new();
+    PotrjevanjeNalogDto? selectedNalog;
+    PredracunGridDto? selectedPredracun;
+    bool isLoading = true;
+    string? errorMessage;
+    int _mesec;
+    int _leto;
+    int _lastPredracunPartner;
+    bool samoNepotrjeni = true;
+
+    // Vnos artikla dialog
+    bool showVnosArtikla;
+    List<ArtikelDto>? artikli;
+    string vnosArtikelSifra = "";
+    decimal vnosKolicina = 1;
+    decimal vnosRabat;
+    string? vnosArtikelNaziv;
+    string? vnosError;
+
+    // Statistika dialog
+    bool showStatistika;
+    List<NalogStatistikaDto>? statistikaData;
+
+    // Račun dialog
+    bool showRacun;
+    bool racunIsLoading;
+    List<OsnutekPosGridDto>? racunPostavke;
+    string? racunError;
+    string? racunMessage;
+    string racunHeader = "Račun";
+
+    // Poveži predračune dialog
+    bool showPoveziPredracune;
+    List<PovezavaSprememba>? povezaveSpremembe;
+    string? povezaveError;
+
+    record PovezavaSprememba(string Stevilka, int Leto, bool JeDodana);
+
+    List<PotrjevanjeNalogDto> filteredNalogi => samoNepotrjeni
+        ? nalogi.Where(n => !n.Pregledan).ToList()
+        : nalogi;
+
+    static readonly List<KajObracunamOption> kajObracunamOptions =
+    [
+        new(KajObracunam.Nedefinirano, "Nedefinirano"),
+        new(KajObracunam.KmMin, "Km + min"),
+        new(KajObracunam.Nic, "Nič"),
+        new(KajObracunam.Km, "Samo km"),
+        new(KajObracunam.Min, "Samo min"),
+        new(KajObracunam.ObveznoZaracunaj, "Obvezno zaračunaj")
+    ];
+
+    record KajObracunamOption(KajObracunam Value, string Text);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+            // Ustvari manjkajoče OBRACUN_DN zapise pred nalaganjem
+            await ObracunService.UstvariManjkajoceObracunDnAsync(_leto, _mesec);
+
+            nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(_leto, _mesec);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task OnNalogSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PotrjevanjeNalogDto row)
+        {
+            selectedNalog = row;
+            selectedPredracun = null;
+            predracunPostavke = new();
+
+            try
+            {
+                nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(row.Stevilka, row.Leto);
+
+                // Predračune naloži samo če se partner spremeni
+                if (row.Partner != _lastPredracunPartner)
+                {
+                    predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, _mesec, _leto);
+                    _lastPredracunPartner = row.Partner;
+                }
+
+                // Naloži stanje povezav za ta nalog
+                await NaloziPovezanStanje(row.Stevilka, row.Leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka: {ex.Message}";
+            }
+        }
+    }
+
+    async Task OnPredracunSelected(GridFocusedRowChangedEventArgs e)
+    {
+        if (e.DataItem is PredracunGridDto row)
+        {
+            selectedPredracun = row;
+            try
+            {
+                predracunPostavke = await ObracunService.GetPostavkePredracunaAsync(row.Stevilka, row.Leto);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Napaka: {ex.Message}";
+            }
+        }
+    }
+
+    async Task OnPolovicnaChanged(bool value)
+    {
+        if (selectedNalog == null) return;
+        try
+        {
+            selectedNalog.PolovicnaKilometrina = value;
+            await ObracunService.SavePolovicnaKilometrinaAsync(selectedNalog.Stevilka, selectedNalog.Leto, value);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnKajObracunamChanged(KajObracunam value)
+    {
+        if (selectedNalog == null) return;
+        try
+        {
+            var staraVrednost = selectedNalog.KajObracunam;
+            selectedNalog.KajObracunam = value;
+            await ObracunService.SaveKajObracunamAsync(selectedNalog.Stevilka, selectedNalog.Leto, staraVrednost, value);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnPotrdi()
+    {
+        if (selectedNalog == null || selectedNalog.Pregledan) return;
+        try
+        {
+            await ObracunService.PotrdiNalogAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+            selectedNalog.Pregledan = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnNicPotrdi()
+    {
+        if (selectedNalog == null || selectedNalog.Pregledan) return;
+        try
+        {
+            var staraVrednost = selectedNalog.KajObracunam;
+            selectedNalog.KajObracunam = KajObracunam.Nic;
+            await ObracunService.SaveKajObracunamAsync(selectedNalog.Stevilka, selectedNalog.Leto, staraVrednost, KajObracunam.Nic);
+
+            await ObracunService.PotrdiNalogAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+            selectedNalog.Pregledan = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnPobrisiPotrditev()
+    {
+        if (selectedNalog == null || !selectedNalog.Pregledan) return;
+        try
+        {
+            await ObracunService.PobrisiPotrditevNalogaAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+            selectedNalog.Pregledan = false;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OpenVnosArtikla()
+    {
+        if (selectedNalog == null) return;
+        vnosArtikelSifra = "";
+        vnosKolicina = 1;
+        vnosRabat = 0;
+        vnosArtikelNaziv = null;
+        vnosError = null;
+        artikli ??= await ArtikelService.GetAllArtikliAsync();
+        showVnosArtikla = true;
+    }
+
+    async Task OpenStatistika()
+    {
+        try
+        {
+            statistikaData = await ObracunService.GetNalogStatistikaAsync();
+            showStatistika = true;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnVnosArtikelChanged(string sifra)
+    {
+        vnosArtikelSifra = sifra;
+        if (!string.IsNullOrWhiteSpace(sifra))
+        {
+            var detail = await ArtikelService.GetArtikelDetailBySifraAsync(sifra);
+            if (detail.HasValue)
+                vnosArtikelNaziv = detail.Value.Naziv;
+        }
+    }
+
+    async Task SaveVnosArtikla()
+    {
+        if (selectedNalog == null) return;
+        if (string.IsNullOrWhiteSpace(vnosArtikelSifra))
+        {
+            vnosError = "Izberite artikel.";
+            return;
+        }
+        if (vnosKolicina <= 0)
+        {
+            vnosError = "Količina mora biti večja od 0.";
+            return;
+        }
+        vnosError = null;
+
+        try
+        {
+            var datumNaloga = selectedNalog.Datum;
+            var detail = await ArtikelService.GetArtikelDetailBySifraAsync(vnosArtikelSifra);
+            var cena = detail?.ProdajnaCena ?? 0m;
+
+            await ObracunService.SaveRocniArtikelAsync(
+                datumNaloga.Year, datumNaloga.Month, selectedNalog.Partner,
+                vnosArtikelSifra, vnosArtikelNaziv ?? "", vnosKolicina, cena, vnosRabat,
+                selectedNalog.Stevilka, selectedNalog.Leto);
+
+            showVnosArtikla = false;
+            nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+        }
+        catch (Exception ex)
+        {
+            vnosError = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task OnDeleteRocnaPostavka(PotrjevanjeNalogPozDto poz)
+    {
+        if (selectedNalog == null || !poz.JeRocni) return;
+        try
+        {
+            await ObracunService.DeleteRocniArtikelAsync(poz.RocniMesec, poz.RocniLeto, poz.RocniPartner, poz.RocniZs);
+            nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+        }
+        catch (Exception ex)
+        {
+            vnosError = $"Napaka pri brisanju: {ex.Message}";
+        }
+    }
+
+    async Task OnPotrdiInNaslednji()
+    {
+        if (selectedNalog == null || selectedNalog.Pregledan) return;
+        try
+        {
+            await ObracunService.PotrdiNalogAsync(selectedNalog.Stevilka, selectedNalog.Leto);
+            selectedNalog.Pregledan = true;
+
+            // Premakni fokus na naslednji nepotrjeni nalog
+            var naslednji = filteredNalogi
+                .SkipWhile(n => n.Key != selectedNalog.Key)
+                .Skip(1)
+                .FirstOrDefault(n => !n.Pregledan);
+
+            if (naslednji != null && gridNalogi != null)
+            {
+                selectedNalog = naslednji;
+                selectedPredracun = null;
+                predracunPostavke = new();
+                nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(naslednji.Stevilka, naslednji.Leto);
+
+                if (naslednji.Partner != _lastPredracunPartner)
+                {
+                    predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(naslednji.Partner, _mesec, _leto);
+                    _lastPredracunPartner = naslednji.Partner;
+                }
+
+                await NaloziPovezanStanje(naslednji.Stevilka, naslednji.Leto);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    async Task NaloziPovezanStanje(string nalogStevilka, int nalogLeto)
+    {
+        var povezani = await ObracunService.GetPovezaniPredracuniAsync(nalogStevilka, nalogLeto);
+        foreach (var p in predracuni)
+        {
+            var je = povezani.Contains((p.Stevilka, p.Leto));
+            p.Povezan = je;
+            p.PovezanOriginal = je;
+        }
+    }
+
+    async Task OnRacunClick()
+    {
+        if (selectedNalog == null) return;
+        racunPostavke = null;
+        racunError = null;
+        racunMessage = null;
+        racunIsLoading = true;
+        racunHeader = $"Račun — {selectedNalog.Partner} — {selectedNalog.NazivPartnerja}";
+        showRacun = true;
+
+        try
+        {
+            // Preberi praznike iz parametrov
+            var praznikiSet = new HashSet<DateTime>();
+            for (int i = 0; i < 5; i++)
+            {
+                var val = Parametri.GetString(ParametriService.Praznik(i + 1));
+                if (!string.IsNullOrWhiteSpace(val) && DateTime.TryParse(val, out var dt))
+                    praznikiSet.Add(dt.Date);
+            }
+
+            var partner = selectedNalog.Partner;
+            var rezultat = await Task.Run(() => ObracunIzvedi.IzvedObracunZaPartnerja(_mesec, _leto, partner, praznikiSet));
+
+            if (rezultat.Success)
+            {
+                racunMessage = rezultat.Message;
+                racunPostavke = await ObracunService.GetPostavkeOsnutkaAsync(_leto, _mesec, partner);
+            }
+            else
+            {
+                racunError = rezultat.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            racunError = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            racunIsLoading = false;
+        }
+    }
+
+    void OpenPoveziPredracune()
+    {
+        if (selectedNalog == null) return;
+        povezaveError = null;
+        povezaveSpremembe = predracuni
+            .Where(p => p.Povezan != p.PovezanOriginal)
+            .Select(p => new PovezavaSprememba(p.Stevilka, p.Leto, p.Povezan))
+            .ToList();
+        showPoveziPredracune = true;
+    }
+
+    async Task SavePovezavePredracunov()
+    {
+        if (selectedNalog == null || povezaveSpremembe == null) return;
+        povezaveError = null;
+
+        try
+        {
+            var dodaj = povezaveSpremembe.Where(s => s.JeDodana).Select(s => (s.Stevilka, s.Leto)).ToList();
+            var brisi = povezaveSpremembe.Where(s => !s.JeDodana).Select(s => (s.Stevilka, s.Leto)).ToList();
+
+            await ObracunService.SavePovezaniPredracuniAsync(selectedNalog.Stevilka, selectedNalog.Leto, dodaj, brisi);
+
+            // Posodobi originalno stanje
+            foreach (var p in predracuni)
+                p.PovezanOriginal = p.Povezan;
+
+            showPoveziPredracune = false;
+        }
+        catch (Exception ex)
+        {
+            povezaveError = $"Napaka: {ex.Message}";
+        }
+    }
+}

@@ -1,0 +1,256 @@
+@page "/zakljucek"
+@rendermode InteractiveServer
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ParametriService Parametri
+@inject ZakljucekService ZakljucekService
+@inject AuthService AuthService
+
+<PageTitle>Zaključek meseca</PageTitle>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <div style="max-width:600px;">
+        <h4 class="mb-4">Zaključek meseca: @_mesec/@_leto</h4>
+
+        <table class="table table-sm table-bordered" style="max-width:400px;">
+            <tbody>
+                <tr>
+                    <td><strong>Skupaj delovnih nalogov</strong></td>
+                    <td class="text-end"><strong>@statistika!.SkupajNalogov</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h5 class="mt-4 mb-2">Po vrsti obračuna (OBRACUN_DN)</h5>
+        <table class="table table-sm table-bordered" style="max-width:400px;">
+            <thead>
+                <tr>
+                    <th>Kaj obračunam</th>
+                    <th class="text-end">Število</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in statistika!.PoKajObracunam.OrderBy(x => (int)x.Key))
+                {
+                    <tr>
+                        <td>@item.Key.ToText()</td>
+                        <td class="text-end">@item.Value</td>
+                    </tr>
+                }
+                @if (statistika!.BrezObracunDn > 0)
+                {
+                    <tr class="table-danger">
+                        <td><strong>Brez zapisa v OBRACUN_DN</strong></td>
+                        <td class="text-end"><strong>@statistika!.BrezObracunDn</strong></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <hr class="my-4" />
+
+        @if (rezultat == null)
+        {
+            <div class="zakljucek-potrditev">
+                <p style="font-size:1.05rem;">Ali želite zaključiti mesec <strong>@_mesec/@_leto</strong>?</p>
+                <p class="text-muted">Za potrditev vpišite <strong>DA</strong> in kliknite gumb.</p>
+
+                <div class="d-flex align-items-center gap-3 mb-4" style="max-width:400px;">
+                    <label style="white-space:nowrap; font-weight:600;">Potrditev</label>
+                    <DxTextBox @bind-Text="@potrditevVnos"
+                               NullText="Vpišite DA"
+                               CssClass="w-100" />
+                </div>
+
+                @if (!string.IsNullOrEmpty(opozorilo))
+                {
+                    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3 py-2" role="alert" style="max-width:400px;">
+                        <span style="font-size:1.2rem;">⚠️</span>
+                        <span>@opozorilo</span>
+                    </div>
+                }
+
+                <DxButton Text="@zakljucekBtnText"
+                          Click="@IzvediZakljucek"
+                          RenderStyle="@(jePotrjeno ? ButtonRenderStyle.Danger : ButtonRenderStyle.Primary)"
+                          CssClass="@(jePotrjeno ? "zakljucek-btn zakljucek-btn-aktiven" : "zakljucek-btn")" />
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-success">
+                <p><strong>Zaključek meseca @_mesec/@_leto je bil uspešno izveden.</strong></p>
+                <p>Število posodobljenih nalogov (FAKTURIRANA): <strong>@rezultat.SteviloSprememb</strong></p>
+                <p>Novo obdobje: <strong>@rezultat.NoviMesec/@rezultat.NovoLeto</strong></p>
+            </div>
+        }
+    </div>
+}
+
+@* === Splash overlay med izvajanjem === *@
+@if (isProcessing)
+{
+    <div class="zakljucek-overlay">
+        <div class="zakljucek-splash">
+            <div class="zakljucek-spinner"></div>
+            <h4 class="mt-3 mb-2">Zaključujem mesec @_mesec/@_leto</h4>
+            <p class="text-muted mb-1">@progressMessage</p>
+            <p class="text-muted" style="font-size:0.8rem;">Prosim počakajte, ne zapirajte okna.</p>
+        </div>
+    </div>
+}
+
+<style>
+    .zakljucek-btn {
+        padding: 12px 32px !important;
+        font-size: 1.1rem !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.3px;
+        border-radius: 8px !important;
+        transition: all 0.3s ease;
+    }
+
+    .zakljucek-btn-aktiven {
+        box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35), 0 4px 15px rgba(220, 53, 69, 0.3) !important;
+        animation: zakljucekPulse 2s infinite;
+    }
+
+    @@keyframes zakljucekPulse {
+        0% { box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35), 0 4px 15px rgba(220, 53, 69, 0.3); }
+        50% { box-shadow: 0 0 0 6px rgba(220, 53, 69, 0.2), 0 4px 20px rgba(220, 53, 69, 0.4); }
+        100% { box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.35), 0 4px 15px rgba(220, 53, 69, 0.3); }
+    }
+
+    .zakljucek-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 10000;
+    }
+
+    .zakljucek-splash {
+        background: #fff;
+        border-radius: 16px;
+        padding: 48px 56px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 450px;
+    }
+
+    .zakljucek-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #e9ecef;
+        border-top: 4px solid #dc3545;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .zakljucek-potrditev {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 24px;
+    }
+</style>
+
+@code {
+    bool isLoading = true;
+    bool isProcessing;
+    string? errorMessage;
+    string? progressMessage;
+    int _mesec;
+    int _leto;
+    ZakljucekStatistikaDto? statistika;
+    ZakljucekRezultatDto? rezultat;
+    string? potrditevVnos;
+    string? opozorilo;
+
+    bool jePotrjeno => potrditevVnos?.Trim().Equals("DA", StringComparison.OrdinalIgnoreCase) == true;
+
+    string zakljucekBtnText => $"🔒  Zaključi mesec {_mesec}/{_leto}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+            statistika = await ZakljucekService.GetStatistikoAsync(_leto, _mesec);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task IzvediZakljucek()
+    {
+        if (!jePotrjeno)
+        {
+            opozorilo = string.IsNullOrWhiteSpace(potrditevVnos)
+                ? "Najprej vpišite DA v polje za potrditev."
+                : $"Vpisali ste \"{potrditevVnos?.Trim()}\". Za potrditev vpišite DA.";
+            return;
+        }
+
+        opozorilo = null;
+        isProcessing = true;
+        progressMessage = "Pripravljam podatke ...";
+        StateHasChanged();
+        await Task.Delay(100);
+
+        try
+        {
+            progressMessage = "Preverjam delovne naloge ...";
+            StateHasChanged();
+            await Task.Delay(50);
+
+            var uporabnik = AuthService.CurrentUser?.UporabniskoIme ?? "neznano";
+
+            progressMessage = $"Zaključujem {statistika?.SkupajNalogov ?? 0} nalogov ...";
+            StateHasChanged();
+            await Task.Delay(50);
+
+            rezultat = await ZakljucekService.IzvediZakljucekAsync(_leto, _mesec, uporabnik);
+
+            // Posodobi lokalne spremenljivke z novimi vrednostmi iz parametrov
+            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+            progressMessage = "Posodabljam parametre ...";
+            StateHasChanged();
+            await Task.Delay(200);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri zaključevanju: {ex.Message}";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+}

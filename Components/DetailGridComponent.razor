@@ -1,0 +1,65 @@
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject PredracunService PredracunService
+
+@if (isLoading)
+{
+    <p>Nalagam postavke...</p>
+}
+else if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div style="color:red; padding:8px;">@errorMessage</div>
+}
+else if (knjizbe == null || knjizbe.Count == 0)
+{
+    <p style="padding:8px; color:gray;">Ni postavk za predraèun @Stevilka / @Leto</p>
+}
+else
+{
+    <DxGrid Data="@knjizbe"
+            ShowAllRows="true"
+            CssClass="ms-4">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.SifraArtikla)" Caption="Artikel" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.NazivArtikla)" Caption="Naziv" />
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Kolicina)" Caption="Kolièina" DisplayFormat="N2" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaCena)" Caption="Prodajna cena" DisplayFormat="N2" Width="140px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.ProdajnaVrednost)" Caption="Prodajna vrednost" DisplayFormat="N2" Width="160px" />
+            <DxGridDataColumn FieldName="@nameof(PredracunKnjizbaGridDto.Rabat1)" Caption="Rabat 1" DisplayFormat="N2" Width="120px" />
+        </Columns>
+    </DxGrid>
+}
+
+@code {
+    [Parameter]
+    public string Stevilka { get; set; } = string.Empty;
+
+    [Parameter]
+    public int Leto { get; set; }
+
+    List<PredracunKnjizbaGridDto>? knjizbe;
+    bool isLoading = true;
+    string errorMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadKnjizbe();
+    }
+
+    async Task LoadKnjizbe()
+    {
+        isLoading = true;
+        try
+        {
+            knjizbe = await PredracunService.GetKnjizbeAsync(Stevilka, Leto);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

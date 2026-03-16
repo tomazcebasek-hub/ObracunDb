@@ -1,0 +1,195 @@
+@using ObracunDb.Data
+
+<div class="connection-error-overlay">
+    <div class="connection-error-card">
+        <div class="error-icon">?</div>
+        <h2>Povezava na bazo ni uspela</h2>
+        <p class="error-subtitle">Program se ne more povezati na Firebird bazo podatkov.</p>
+
+        @if (TestResult != null)
+        {
+            <div class="error-details">
+                <div class="detail-row">
+                    <span class="detail-label">Strežnik:</span>
+                    <span class="detail-value">@TestResult.DataSource:@TestResult.Port</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Baza:</span>
+                    <span class="detail-value">@TestResult.Database</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Uporabnik:</span>
+                    <span class="detail-value">@TestResult.UserID</span>
+                </div>
+            </div>
+
+            <div class="error-message-box">
+                <div class="error-message-label">Napaka:</div>
+                <div class="error-message-text">@TestResult.Message</div>
+            </div>
+
+            @if (showFullError && !string.IsNullOrEmpty(TestResult.FullError))
+            {
+                <div class="error-full-box">
+                    <pre>@TestResult.FullError</pre>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(TestResult.FullError) && TestResult.FullError != TestResult.Message)
+            {
+                <button class="toggle-details-btn" @onclick="() => showFullError = !showFullError">
+                    @(showFullError ? "Skrij podrobnosti" : "Prikaži podrobnosti")
+                </button>
+            }
+        }
+
+        <div class="error-help">
+            <p>Preverite nastavitve v datoteki <strong>ObracunDb.ini</strong></p>
+        </div>
+    </div>
+</div>
+
+<style>
+    .connection-error-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        padding: 20px;
+    }
+
+    .connection-error-card {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        padding: 48px;
+        max-width: 600px;
+        width: 100%;
+        text-align: center;
+    }
+
+    .error-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+    }
+
+    .connection-error-card h2 {
+        color: #c0392b;
+        font-size: 1.6rem;
+        margin-bottom: 8px;
+    }
+
+    .error-subtitle {
+        color: #6c757d;
+        font-size: 1rem;
+        margin-bottom: 24px;
+    }
+
+    .error-details {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        text-align: left;
+    }
+
+    .detail-row {
+        display: flex;
+        padding: 4px 0;
+        font-size: 0.9rem;
+    }
+
+    .detail-label {
+        font-weight: 600;
+        color: #495057;
+        min-width: 100px;
+    }
+
+    .detail-value {
+        color: #212529;
+        word-break: break-all;
+    }
+
+    .error-message-box {
+        background: #fff5f5;
+        border: 1px solid #feb2b2;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        text-align: left;
+    }
+
+    .error-message-label {
+        font-weight: 600;
+        color: #c53030;
+        font-size: 0.85rem;
+        margin-bottom: 4px;
+    }
+
+    .error-message-text {
+        color: #742a2a;
+        font-size: 0.9rem;
+        word-break: break-word;
+    }
+
+    .error-full-box {
+        background: #1a1a2e;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        text-align: left;
+        overflow-x: auto;
+    }
+
+    .error-full-box pre {
+        color: #e2e8f0;
+        font-size: 0.75rem;
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    .toggle-details-btn {
+        background: none;
+        border: 1px solid #cbd5e0;
+        border-radius: 6px;
+        padding: 8px 16px;
+        color: #4a5568;
+        cursor: pointer;
+        font-size: 0.85rem;
+        margin-bottom: 16px;
+        transition: all 0.2s;
+    }
+
+    .toggle-details-btn:hover {
+        background: #f7fafc;
+        border-color: #a0aec0;
+    }
+
+    .error-help {
+        background: #fffbea;
+        border: 1px solid #fbd38d;
+        border-radius: 8px;
+        padding: 12px 16px;
+        color: #744210;
+        font-size: 0.9rem;
+    }
+
+    .error-help p {
+        margin: 0;
+    }
+</style>
+
+@code {
+    [Parameter]
+    public ConnectionTestResult? TestResult { get; set; }
+
+    bool showFullError;
+}

@@ -1,0 +1,48 @@
+﻿@page "/chart"
+
+<PageTitle>Chart</PageTitle>
+
+<h1>Chart</h1>
+
+<DxChart Data="@ChartData">
+    <DxChartTitle Text="World Wide Sales" />
+    <DxChartCommonSeries NameField="@((SaleInfo s) => s.Date.Year)"
+                         ArgumentField="@(s => s.City)"
+                         ValueField="@(s => s.Amount)"
+                         SummaryMethod="Enumerable.Sum"
+                         SeriesType="ChartSeriesType.Bar" />
+    <DxChartLegend Position="RelativePosition.Outside"
+                   HorizontalAlignment="HorizontalAlignment.Right" />
+    <DxChartTooltip Enabled="true" Position="RelativePosition.Outside">
+        <div class="chart-tooltip">
+            <div class="chart-tooltip-title">
+                Year @context.Point.SeriesName
+            </div>
+            <div>
+                @context.Point.Argument: @($"{(int)context.Point.Value:$0,.#K}")
+            </div>
+        </div>
+    </DxChartTooltip>
+</DxChart>
+
+@code {
+    SaleInfo[]? ChartData { get; set; }
+
+    protected override async Task OnInitializedAsync() {
+        string[] cities = ["Amsterdam", "Berlin", "Denver", "Edmonton", "London", "Los Angeles", "Madrid", "Melbourne", "New York", "Seoul", "Sydney", "Tokyo", "Vancouver"];
+        ChartData = Enumerable.Range(1, 1000)
+            .Select(_ => new SaleInfo(
+                cities[Random.Shared.Next(0, cities.Length)],
+                Random.Shared.Next(1000, 10000),
+                new DateTime(
+                    Random.Shared.Next(DateTime.Now.Year - 2, DateTime.Now.Year + 1),
+                    Random.Shared.Next(1, 13),
+                    Random.Shared.Next(1, 29))
+            ))
+            .OrderBy(s => s.City)
+            .ThenBy(s => s.Date.Year)
+            .ToArray();
+    }
+
+    record SaleInfo(string City, int Amount, DateTime Date);
+}

@@ -1,0 +1,342 @@
+@page "/zapis-v-faw"
+@rendermode InteractiveServer
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ParametriService Parametri
+@inject FawService FawService
+
+<PageTitle>Zapis v FAW</PageTitle>
+
+<h5>Zapis v FAW — @_mesec/@_leto</h5>
+
+<div style="max-width:550px;" class="mt-3">
+    <table class="table table-sm table-borderless">
+        <tbody>
+            <tr>
+                <td style="width:160px; vertical-align:middle;"><strong>Datum računa</strong></td>
+                <td>
+                    <DxDateEdit @bind-Date="@datumRacuna"
+                                Format="dd.MM.yyyy"
+                                style="width:250px;"
+                                Enabled="@(!isRunning)" />
+                </td>
+            </tr>
+            <tr>
+                <td style="vertical-align:middle;"><strong>Komercialist</strong></td>
+                <td>
+                    <DxComboBox Data="@komercialisti"
+                                ValueFieldName="Sifra"
+                                TextFieldName="Naziv"
+                                @bind-Value="@selectedKomercialist"
+                                NullText="Izberite komercialista"
+                                FilteringMode="DataGridFilteringMode.Contains"
+                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                style="width:400px;"
+                                Enabled="@(!isRunning)" />
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2" style="padding-top:10px;">
+                    <DxCheckBox @bind-Checked="@samoEna" Enabled="@(!isRunning)">Zapišem samo 1 fakturo</DxCheckBox>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    @if (stanje != null)
+    {
+        <div class="mt-3" style="font-size:1.05rem;">
+            Pripravljenih: <strong>@stanje.SkupajRacunov</strong> &nbsp;|&nbsp;
+            Prenesenih: <strong>@stanje.ZePrenesenih</strong> &nbsp;|&nbsp;
+            Za prenos: <strong>@stanje.ZaPrenosOstane</strong>
+        </div>
+    }
+
+    @if (isRunning)
+    {
+        <div class="mt-3">
+            <div class="d-flex gap-2 align-items-center">
+                <div class="progress flex-grow-1" style="height:24px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         role="progressbar"
+                         style="width:@(progressPercent)%;">
+                        @(progressPercent)%
+                    </div>
+                </div>
+                <DxButton Text="Prekini" RenderStyle="ButtonRenderStyle.Warning" Click="@OnPrekini" />
+            </div>
+            <div class="text-muted mt-1">@partnerStatus</div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(rezultatSporocilo))
+    {
+        <div class="alert @(rezultatUspeh ? "alert-success" : "alert-danger") mt-3">@rezultatSporocilo</div>
+    }
+
+    @if (showPotrditev)
+    {
+        <div class="alert alert-warning mt-3">
+            <p>Prenesti <strong>@stPrenosa</strong> od <strong>@stanje!.ZaPrenosOstane</strong> računov v FAW?</p>
+            <p>Datum: <strong>@datumRacuna?.ToString("dd.MM.yyyy")</strong></p>
+            <p>Komercialist: <strong>@selectedKomercialist</strong></p>
+            <div class="d-flex gap-2 mt-2">
+                <DxButton Text="Da, zapiši" RenderStyle="ButtonRenderStyle.Danger" Click="@IzvediZapis" />
+                <DxButton Text="Prekliči" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showPotrditev = false)" />
+            </div>
+        </div>
+    }
+
+    <div class="d-flex gap-2 mt-3">
+        <DxButton Text="Zapiši račune"
+                  RenderStyle="ButtonRenderStyle.Primary"
+                  Click="@OnZapisi"
+                  Enabled="@(!isRunning && !showPotrditev && (stanje?.ZaPrenosOstane ?? 0) > 0)" />
+    </div>
+
+    @if (dnevnik.Count > 0)
+    {
+        <div class="mt-3">
+            <strong>Dnevnik:</strong>
+            <div style="max-height:300px; overflow:auto; font-family:monospace; font-size:0.8rem; border:1px solid #ddd; padding:8px; margin-top:4px;">
+                @foreach (var line in dnevnik)
+                {
+                    <div>@line</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    int _mesec;
+    int _leto;
+    DateTime? datumRacuna;
+    string? selectedKomercialist;
+    bool samoEna = true;
+    bool isRunning;
+    bool showPotrditev;
+    int stPrenosa;
+    string partnerStatus = "";
+    int progressPercent;
+    string? rezultatSporocilo;
+    bool rezultatUspeh;
+    List<string> dnevnik = new();
+    CancellationTokenSource? _cts;
+
+    FawStanje? stanje;
+    List<KomercialstItem> komercialisti = new();
+
+    class KomercialstItem
+    {
+        public string Sifra { get; set; } = "";
+        public string Naziv { get; set; } = "";
+    }
+
+    protected override void OnInitialized()
+    {
+        _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+        _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+        var shranjeniDatum = Parametri.GetString(ObracunParam.FawDatumRacuna);
+        if (DateTime.TryParse(shranjeniDatum, out var dt))
+            datumRacuna = dt;
+        else
+            datumRacuna = DateTime.Today;
+
+        selectedKomercialist = Parametri.GetString(ObracunParam.FawKomercialist);
+        if (string.IsNullOrWhiteSpace(selectedKomercialist))
+            selectedKomercialist = null;
+
+        var rawKomercialisti = FawService.NaloziKomercialiste();
+        komercialisti = rawKomercialisti
+            .Select(k => new KomercialstItem { Sifra = k.Sifra, Naziv = $"{k.Sifra} - {k.Naziv}" })
+            .ToList();
+
+        OsveziStanje();
+    }
+
+    void OsveziStanje()
+    {
+        try
+        {
+            stanje = FawService.PridobiStanje(_mesec, _leto);
+        }
+        catch (Exception ex)
+        {
+            rezultatSporocilo = $"Napaka: {ex.Message}";
+            rezultatUspeh = false;
+        }
+    }
+
+    void OnPrekini()
+    {
+        _cts?.Cancel();
+        partnerStatus = "Prekinjam...";
+    }
+
+    void OnZapisi()
+    {
+        rezultatSporocilo = null;
+
+        var apiUrl = Parametri.GetString(ObracunParam.VascoApiUrl);
+        if (string.IsNullOrWhiteSpace(apiUrl))
+        {
+            rezultatSporocilo = "API URL ni nastavljen v Nastavitvah.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Parametri.GetString(ObracunParam.VascoApiUporabnik)) ||
+            string.IsNullOrWhiteSpace(Parametri.GetString(ObracunParam.VascoApiGeslo)))
+        {
+            rezultatSporocilo = "Uporabniško ime ali geslo ni nastavljeno.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Parametri.GetString(ObracunParam.VascoApiDavcna)))
+        {
+            rezultatSporocilo = "Davčna številka ni nastavljena.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedKomercialist))
+        {
+            rezultatSporocilo = "Izberite komercialista.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        if (!datumRacuna.HasValue)
+        {
+            rezultatSporocilo = "Vnesite datum računa.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        stPrenosa = samoEna ? 1 : (stanje?.ZaPrenosOstane ?? 0);
+        if (stPrenosa == 0)
+        {
+            rezultatSporocilo = "Ni računov za prenos.";
+            rezultatUspeh = false;
+            return;
+        }
+
+        showPotrditev = true;
+    }
+
+    async Task IzvediZapis()
+    {
+        showPotrditev = false;
+        isRunning = true;
+        rezultatSporocilo = null;
+        dnevnik.Clear();
+        progressPercent = 0;
+        partnerStatus = "";
+        _cts = new CancellationTokenSource();
+
+        await Parametri.SaveToDatabaseAsync(ObracunParam.FawDatumRacuna, datumRacuna!.Value.ToString("yyyy-MM-dd"));
+        await Parametri.SaveToDatabaseAsync(ObracunParam.FawKomercialist, selectedKomercialist!);
+
+        var apiUrl = Parametri.GetString(ObracunParam.VascoApiUrl)!;
+        var uporabnik = Parametri.GetString(ObracunParam.VascoApiUporabnik)!;
+        var geslo = Parametri.GetString(ObracunParam.VascoApiGeslo)!;
+        var davcna = Parametri.GetString(ObracunParam.VascoApiDavcna)!;
+
+        var partnerji = FawService.PridobiPartnerjeZaPrenos(_mesec, _leto);
+        var stZaPreos = samoEna ? Math.Min(1, partnerji.Count) : partnerji.Count;
+
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(90);
+
+            partnerStatus = "Avtentikacija...";
+            StateHasChanged();
+            await Task.Delay(50);
+
+            var (avtUspeh, token, avtSporocilo) = await FawService.Avtenticiraj(httpClient, apiUrl, uporabnik, geslo, davcna);
+            dnevnik.Add(avtSporocilo);
+
+            if (!avtUspeh || string.IsNullOrEmpty(token))
+            {
+                rezultatSporocilo = avtSporocilo;
+                rezultatUspeh = false;
+                return;
+            }
+
+            partnerStatus = "Nalagam podatke...";
+            StateHasChanged();
+            await Task.Delay(50);
+
+            var cache = FawService.NaloziCache(_mesec, _leto);
+            dnevnik.Add("Podatki naloženi v spomin.");
+
+            using var db = FawService.CreateSharedDb();
+            int uspesnih = 0;
+
+            for (int i = 0; i < stZaPreos; i++)
+            {
+                if (_cts!.Token.IsCancellationRequested)
+                {
+                    rezultatSporocilo = $"Prekinil uporabnik. Uspešno prenesenih: {uspesnih}.";
+                    rezultatUspeh = uspesnih > 0;
+                    break;
+                }
+
+                var partner = partnerji[i];
+                partnerStatus = $"[{i + 1}/{stZaPreos}] Partner {partner}";
+                progressPercent = (int)((i + 1.0) / stZaPreos * 100);
+                StateHasChanged();
+                await Task.Delay(50);
+
+                var logAction = i < 5 ? (Action<string>)(msg => dnevnik.Add(msg)) : null;
+                var rezultat = await FawService.ZapisiRacun(httpClient, apiUrl, token, _mesec, _leto, partner, datumRacuna!.Value, selectedKomercialist!, cache, db, logAction);
+                dnevnik.Add($"{partner}: {rezultat.Sporocilo}");
+
+                if (rezultat.Uspeh)
+                {
+                    uspesnih++;
+                }
+                else
+                {
+                    rezultatSporocilo = $"Napaka pri partnerju {partner}: {rezultat.Sporocilo}";
+                    rezultatUspeh = false;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(rezultatSporocilo))
+            {
+                rezultatSporocilo = $"Uspešno prenesenih: {uspesnih}";
+                rezultatUspeh = true;
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            rezultatSporocilo = "Časovna omejitev je potekla!";
+            rezultatUspeh = false;
+        }
+        catch (HttpRequestException ex)
+        {
+            rezultatSporocilo = $"Napaka pri povezavi: {ex.Message}";
+            rezultatUspeh = false;
+        }
+        catch (Exception ex)
+        {
+            rezultatSporocilo = $"Napaka: {ex.Message}";
+            rezultatUspeh = false;
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            isRunning = false;
+            progressPercent = 0;
+            partnerStatus = "";
+            OsveziStanje();
+        }
+    }
+}

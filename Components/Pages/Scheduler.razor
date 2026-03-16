@@ -1,0 +1,59 @@
+﻿@page "/scheduler"
+
+<PageTitle>Scheduler</PageTitle>
+
+<h1>Scheduler</h1>
+
+<DxScheduler DataStorage="@DataStorage"
+             CssClass="overflow-hidden"
+             @bind-ActiveViewType="@ActiveViewType">
+    <DxSchedulerDayView ShowWorkTimeOnly="true"></DxSchedulerDayView>
+    <DxSchedulerWorkWeekView ShowWorkTimeOnly="true"></DxSchedulerWorkWeekView>
+    <DxSchedulerWeekView ShowWorkTimeOnly="true" />
+    <DxSchedulerMonthView CellMinWidth="120"></DxSchedulerMonthView>
+</DxScheduler>
+
+@code {
+    DxSchedulerDataStorage? DataStorage { get; set; }
+    SchedulerViewType ActiveViewType { get; set; } = SchedulerViewType.WorkWeek;
+
+    protected override async Task OnInitializedAsync() {
+        DayOfWeek firstDayOfWeek = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        DateTime startOfWeek = DateTime.Today.AddDays(-(7 + (DateTime.Today.DayOfWeek - firstDayOfWeek)) % 7);
+        string[] captions = ["Upgrade Personal Computers", "Install New Router in Dev Room", "New Brochures", "Approve Personal Computer Upgrade Plan", "Customer Workshop", "Upgrade Server Hardware", "Database Migration"];
+        DataStorage = new DxSchedulerDataStorage {
+            AppointmentsSource = captions.Select(caption => {
+                    DateTime startDate = startOfWeek + new TimeSpan(DayOfWeek.Monday - firstDayOfWeek + Random.Shared.Next(0, 5), Random.Shared.Next(10, 17), 30 * Random.Shared.Next(0, 2), 0);
+                    return new Appointment(
+                        Caption: caption,
+                        StartDate: startDate,
+                        EndDate: startDate + new TimeSpan(0, 0, 30, 0) * Random.Shared.Next(1, 5),
+                        AllDay: Random.Shared.Next(0, 7) % 7 == 0,
+                        Label: Random.Shared.Next(0, 11),
+                        Status: Random.Shared.Next(0, 5)
+                    );
+                })
+                .ToList(),
+            AppointmentMappings = new DxSchedulerAppointmentMappings {
+                AllDay = "AllDay",
+                Description = "Description",
+                End = "EndDate",
+                LabelId = "Label",
+                Location = "Location",
+                RecurrenceInfo = "Recurrence",
+                Start = "StartDate",
+                StatusId = "Status",
+                Subject = "Caption",
+                Type = "AppointmentType",
+            }
+        };
+    }
+
+    record Appointment(DateTime StartDate, DateTime EndDate, string Caption, int Label, int Status, bool AllDay) {
+        public Appointment() : this(DateTime.Now, DateTime.Now, string.Empty, 0, 0, false) { }
+        public int AppointmentType { get; set; }
+        public string? Description { get; set; }
+        public string? Location { get; set; }
+        public string? Recurrence { get; set; }
+    }
+}

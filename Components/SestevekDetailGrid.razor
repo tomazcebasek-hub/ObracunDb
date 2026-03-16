@@ -1,0 +1,51 @@
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ObracunService ObracunService
+@inject ParametriService Parametri
+
+@if (isLoading)
+{
+    <p style="padding:8px;">Nalagam...</p>
+}
+else if (detailData == null || detailData.Count == 0)
+{
+    <p style="padding:8px; color:gray;">Ni podatkov za artikel @Artikel</p>
+}
+else
+{
+    <DxGrid Data="@detailData"
+            ShowAllRows="true"
+            CssClass="ms-4">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.SifraPartnerja)" Caption="Šifra" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.NazivPartnerja)" Caption="Partner" />
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="110px" />
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.Vrednost)" Caption="Vrednost" DisplayFormat="N2" Width="120px" />
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.Popust)" Caption="Popust" DisplayFormat="N2" Width="110px" />
+            <DxGridDataColumn FieldName="@nameof(SestevekDetailDto.NetoVrednost)" Caption="Neto vrednost" DisplayFormat="N2" Width="130px" SortIndex="0" SortOrder="GridColumnSortOrder.Descending" />
+        </Columns>
+    </DxGrid>
+}
+
+@code {
+    [Parameter]
+    public string Artikel { get; set; } = "";
+
+    List<SestevekDetailDto>? detailData;
+    bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            var leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+            detailData = await ObracunService.GetSestevekDetailAsync(leto, mesec, Artikel);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}
