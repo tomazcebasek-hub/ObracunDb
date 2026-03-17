@@ -28,7 +28,9 @@ public static class MigrationManager
         { 109, ApplyV109 },
         { 110, ApplyV110 },
         { 111, ApplyV111 },
-        { 112, ApplyV112 }
+        { 112, ApplyV112 },
+        { 113, ApplyV113 },
+        { 114, ApplyV114 }
     };
 
     /// <summary>
@@ -145,6 +147,8 @@ public static class MigrationManager
         109 => "OBRACUN_OSNUTEK: dodan stolpec LETNA_POGODBA",
         110 => "OBRACUN_LOCENI_RACUNI: nova tabela za ločene račune",
         112 => "OBRACUN_OSNUTEK_POS: dodana stolpca KDO in KDAJ",
+        113 => "OBRACUN_OSNUTEK_POS: dodana stolpca POGODBA_STEVILKA in POGODBA_LETO",
+        114 => "OBRACUN_OSNUTEK_RACUN: nova tabela za ločene račune po pogodbah",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -465,6 +469,35 @@ public static class MigrationManager
     {
         ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD KDO VARCHAR(100)", status);
         ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD KDAJ TIMESTAMP", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 113: Dodaj stolpca POGODBA_STEVILKA in POGODBA_LETO v tabelo OBRACUN_OSNUTEK_POS.
+    /// </summary>
+    private static string? ApplyV113(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD POGODBA_STEVILKA INTEGER", status);
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD POGODBA_LETO INTEGER", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 114: Nova tabela OBRACUN_OSNUTEK_RACUN za evidenco ločenih računov po pogodbah.
+    /// </summary>
+    private static string? ApplyV114(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_OSNUTEK_RACUN (
+            MESEC              INTEGER NOT NULL,
+            LETO               INTEGER NOT NULL,
+            PARTNER            INTEGER NOT NULL,
+            POGODBA_STEVILKA   INTEGER NOT NULL,
+            POGODBA_LETO       INTEGER NOT NULL,
+            PRODAJALNA         INTEGER NOT NULL,
+            RACUN_STEVILKA     INTEGER,
+            RACUN_LETO         INTEGER,
+            PRIMARY KEY (MESEC, LETO, PARTNER, POGODBA_STEVILKA, POGODBA_LETO)
+        )", status);
         return null;
     }
 }

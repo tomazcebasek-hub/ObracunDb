@@ -42,4 +42,6 @@ public class ObracunLinqDb : DataConnection
     public ITable<Partner> Partner => this.GetTable<Partner>();
     public ITable<FaKomercialist> FaKomercialist => this.GetTable<FaKomercialist>();
     public ITable<ObracunDnPredracun> ObracunDnPredracun => this.GetTable<ObracunDnPredracun>();
+    public ITable<ObracunLoceniRacun> ObracunLoceniRacun => this.GetTable<ObracunLoceniRacun>();
+    public ITable<ObracunOsnutekRacun> ObracunOsnutekRacun => this.GetTable<ObracunOsnutekRacun>();
 }

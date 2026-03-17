@@ -4,16 +4,13 @@ public class KoriscenjePredracuniDto
 {
     public int Partner { get; set; }
     public string? NazivPartnerja { get; set; }
-
-    // Predračuni preteklega meseca
-    public int PretVse { get; set; }
-    public int PretPreteklo { get; set; }
-    public int PretMesec { get; set; }
-    public int PretPreostalo => PretVse - PretPreteklo - PretMesec;
-
-    // Predračuni trenutnega meseca
-    public int TreVse { get; set; }
-    public int TrePreteklo { get; set; }
-    public int TreMesec { get; set; }
-    public int TrePreostalo => TreVse - TrePreteklo - TreMesec;
+    public string Stevilka { get; set; } = "";
+    public int Leto { get; set; }
+    public DateTime? Datum { get; set; }
+    public int Minute { get; set; }
+    /// <summary>Poraba minut po obračunskih mesecih (key = "1-26").</summary>
+    public Dictionary<string, int> Poraba { get; set; } = new();
+    public int SkupajPorabljeno => Poraba.Values.Sum();
+    public int Preostalo => Minute - SkupajPorabljeno;
+    public string Key => $"{Stevilka}_{Leto}";
 }

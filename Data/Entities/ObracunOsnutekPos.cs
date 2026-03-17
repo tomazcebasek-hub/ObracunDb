@@ -67,6 +67,12 @@ public class ObracunOsnutekPos
     [Column("TIP_POSTAVKE")]
     public TipPostavke TipPostavke { get; set; }
 
+    [Column("POGODBA_STEVILKA")]
+    public int? PogodbaStevilka { get; set; }
+
+    [Column("POGODBA_LETO")]
+    public int? PogodbaLeto { get; set; }
+
     [Column("KDO")]
     public string? Kdo { get; set; }
 

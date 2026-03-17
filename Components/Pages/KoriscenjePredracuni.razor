@@ -10,98 +10,81 @@
 
 <PageTitle>Koriščenje predračunov</PageTitle>
 
-@if (true)
-{
-    <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+<div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
 
-        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-            <h5 style="margin: 0;">Koriščenje predračunov — @paramMesec/@paramLeto</h5>
-            @if (isLoading)
-            {
-                <span class="text-muted">Nalagam...</span>
-            }
-            @if (partnerji.Count > 0)
-            {
-                <DxButton Text="XLS" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnExportXls" />
-            }
-        </div>
-
-        @if (partnerji.Count > 0)
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <h5 style="margin: 0;">Koriščenje predračunov — @paramMesec/@paramLeto</h5>
+        @if (isLoading)
         {
-            <div style="flex: 1; overflow: hidden; min-height: 0;">
-                <DxGrid Data="@partnerji"
-                        KeyFieldName="@nameof(KoriscenjePredracuniDto.Partner)"
-                        ShowFilterRow="true"
-                        CssClass="w-100"
-                        PageSize="0"
-                        VirtualScrollingEnabled="true"
-                        style="height: 100%">
-                    <Columns>
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Partner)" Caption="Šifra" Width="70px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.NazivPartnerja)" Caption="Partner" MinWidth="140" />
-                        @* Predračuni preteklega meseca *@
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretVse)" Caption="@pretCapVse" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretPreteklo)" Caption="@pretCapPret" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretMesec)" Caption="@pretCapMes" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.PretPreostalo)" Caption="@pretCapPreost" Width="100px" />
-                        @* Predračuni trenutnega meseca *@
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TreVse)" Caption="@treCapVse" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TrePreteklo)" Caption="@treCapPret" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TreMesec)" Caption="@treCapMes" Width="90px" />
-                        <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.TrePreostalo)" Caption="@treCapPreost" Width="100px" />
-                    </Columns>
-                    <TotalSummary>
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(KoriscenjePredracuniDto.Partner)" DisplayText="Partnerjev: {0}" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretVse)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretPreteklo)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretMesec)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.PretPreostalo)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TreVse)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TrePreteklo)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TreMesec)" />
-                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.TrePreostalo)" />
-                    </TotalSummary>
-                </DxGrid>
-            </div>
+            <span class="text-muted">Nalagam...</span>
+        }
+        @if (vrstice.Count > 0)
+        {
+            <DxButton Text="XLS" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnExportXls" />
         }
     </div>
-}
+
+    @if (vrstice.Count > 0)
+    {
+        <div style="flex: 1; overflow: hidden; min-height: 0;">
+            <DxGrid Data="@vrstice"
+                    KeyFieldName="@nameof(KoriscenjePredracuniDto.Key)"
+                    ShowFilterRow="true"
+                    FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+                    CustomUnboundColumnData="OnCustomUnboundColumnData"
+                    CustomSummary="OnCustomSummary"
+                    CssClass="w-100"
+                    PageSize="0"
+                    VirtualScrollingEnabled="true"
+                    style="height: 100%">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Partner)" Caption="Šifra" Width="70px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.NazivPartnerja)" Caption="Partner" MinWidth="140" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Stevilka)" Caption="Pred.št." Width="80px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Datum)" Caption="Datum" Width="95px" DisplayFormat="dd.MM.yyyy" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Minute)" Caption="Minute" Width="70px" />
+                    @foreach (var m in mesecLabels)
+                    {
+                        var key = m.Key;
+                        <DxGridDataColumn FieldName="@($"p_{key}")" Caption="@m.Label" Width="65px" UnboundType="GridUnboundColumnType.Integer">
+                            <CellDisplayTemplate>@{ var v = PorabaVal(context.DataItem, key); if (v != 0) { @v } }</CellDisplayTemplate>
+                        </DxGridDataColumn>
+                    }
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePredracuniDto.Preostalo)" Caption="Preostalo" Width="80px" />
+                </Columns>
+                <TotalSummary>
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(KoriscenjePredracuniDto.Partner)" DisplayText="Predračunov: {0}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.Minute)" DisplayText="Sum: {0}" />
+                    @foreach (var m in mesecLabels)
+                    {
+                        <DxGridSummaryItem SummaryType="GridSummaryItemType.Custom" FieldName="@($"p_{m.Key}")" />
+                    }
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePredracuniDto.Preostalo)" DisplayText="Sum: {0}" />
+                </TotalSummary>
+            </DxGrid>
+        </div>
+    }
+</div>
 
 @code {
     bool isLoading;
     int paramMesec;
     int paramLeto;
-    int pretMesec;
-    int pretLeto;
-    List<KoriscenjePredracuniDto> partnerji = new();
-
-    string pretCapVse = "";
-    string pretCapPret = "";
-    string pretCapMes = "";
-    string pretCapPreost = "";
-    string treCapVse = "";
-    string treCapPret = "";
-    string treCapMes = "";
-    string treCapPreost = "";
+    List<(string Key, string Label)> mesecLabels = new();
+    List<KoriscenjePredracuniDto> vrstice = new();
 
     protected override async Task OnInitializedAsync()
     {
         paramMesec = Parametri.GetInt(ObracunParam.MesecObracuna);
         paramLeto = Parametri.GetInt(ObracunParam.LetoObracuna);
-        var pretDatum = new DateTime(paramLeto, paramMesec, 1).AddMonths(-1);
-        pretMesec = pretDatum.Month;
-        pretLeto = pretDatum.Year;
 
-        var pretLabel = $"{pretMesec}.{pretLeto % 100}";
-        var treLabel = $"{paramMesec}.{paramLeto % 100}";
-        pretCapVse = $"{pretLabel} Vse";
-        pretCapPret = $"{pretLabel} Pret.";
-        pretCapMes = $"{pretLabel} Mes.";
-        pretCapPreost = $"{pretLabel} Preost.";
-        treCapVse = $"{treLabel} Vse";
-        treCapPret = $"{treLabel} Pret.";
-        treCapMes = $"{treLabel} Mes.";
-        treCapPreost = $"{treLabel} Preost.";
+        var d = new DateTime(2026, 1, 1);
+        var konec = new DateTime(paramLeto, paramMesec, 1);
+        while (d <= konec)
+        {
+            mesecLabels.Add(($"{d.Month}-{d.Year % 100}", $"{d.Month}.{d.Year % 100}"));
+            d = d.AddMonths(1);
+        }
 
         await NaloziPodatke();
     }
@@ -111,17 +94,51 @@
         NavigationManager.NavigateTo("/api/export/koriscenje-predracuni", forceLoad: true);
     }
 
+    int PorabaVal(object item, string key)
+    {
+        if (item is KoriscenjePredracuniDto dto && dto.Poraba.TryGetValue(key, out var v))
+            return v;
+        return 0;
+    }
+
+    void OnCustomUnboundColumnData(GridUnboundColumnDataEventArgs e)
+    {
+        if (e.FieldName.StartsWith("p_"))
+        {
+            var key = e.FieldName.Substring(2);
+            e.Value = PorabaVal(e.DataItem, key);
+        }
+        else
+            e.Value = 0;
+    }
+
+    void OnCustomSummary(GridCustomSummaryEventArgs e)
+    {
+        if (e.SummaryStage == GridCustomSummaryStage.Start)
+            e.TotalValue = 0;
+        else if (e.SummaryStage == GridCustomSummaryStage.Calculate)
+        {
+            var fieldName = e.Item.FieldName;
+            if (fieldName.StartsWith("p_"))
+            {
+                var key = fieldName.Substring(2);
+                var val = PorabaVal(e.DataItem, key);
+                e.TotalValue = (int)(e.TotalValue ?? 0) + val;
+            }
+        }
+    }
+
     async Task NaloziPodatke()
     {
         isLoading = true;
-        partnerji.Clear();
+        vrstice.Clear();
 
         try
         {
             await using var connection = ConnectionManager.GetConnection();
             await connection.OpenAsync();
 
-            // 1. Paket minute slovar
+            // 1. Paket minute slovar (artikel → minut)
             var paketMinute = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             await using (var cmd = new FbCommand("SELECT TRIM(ARTIKEL), MINUT FROM OBRACUN_PAKET_MINUTE", connection))
             {
@@ -129,20 +146,17 @@
                 while (await reader.ReadAsync())
                     paketMinute[reader.GetString(0)] = reader.GetInt32(1);
             }
-
             if (paketMinute.Count == 0) return;
 
             var sifraIn = string.Join(",", paketMinute.Keys.Select(s => "'" + s.Replace("'", "''") + "'"));
-
-            // Datumski razpon: pretekli mesec + trenutni mesec
-            var datumOd = new DateTime(pretLeto, pretMesec, 1);
+            var datumOd = new DateTime(2026, 1, 1);
             var datumDo = new DateTime(paramLeto, paramMesec, 1).AddMonths(1).AddDays(-1);
 
-            // 2. "Vse" minute iz predračunov (status=5 ali plačani) × paket minute
-            //    Ključ: (pretekli mesec, trenutni mesec)
-            var vseMinute = new Dictionary<int, (int Pret, int Tre)>();
+            // 2. Predračuni z minutami (status 2/5 ali plačani)
+            // Grupirano po predračunu → skupne minute
+            var predracuni = new Dictionary<(string Stevilka, int Leto), (int Partner, DateTime? Datum, int Minute)>();
 
-            var sqlVse = "SELECT fp.SIFRA_KUPCA, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), TRIM(k.SIFRA), CAST(k.KOLICINA AS INTEGER)"
+            var sqlPred = "SELECT fp.STEVILKA, fp.LETO, fp.SIFRA_KUPCA, fp.DATUM, TRIM(k.SIFRA), CAST(k.KOLICINA AS INTEGER)"
                 + " FROM FA_PREDRACUN fp"
                 + " JOIN FA_PREDRACUN_KNJIZBA k ON k.STEVILKA = fp.STEVILKA AND k.LETO = fp.LETO"
                 + $" WHERE fp.DATUM >= '{datumOd:yyyy-MM-dd}' AND fp.DATUM <= '{datumDo:yyyy-MM-dd}'"
@@ -156,90 +170,70 @@
                 + "   )"
                 + " )";
 
-            await using (var cmd = new FbCommand(sqlVse, connection))
+            await using (var cmd = new FbCommand(sqlPred, connection))
             {
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    var partner = reader.GetInt32(0);
-                    var predLetoVal = reader.GetInt32(1);
-                    var predMesecVal = reader.GetInt32(2);
-                    var sifra = reader.GetString(3);
-                    var kol = reader.GetInt32(4);
+                    var stevilka = reader.GetString(0).Trim();
+                    var leto = reader.GetInt32(1);
+                    var partner = reader.GetInt32(2);
+                    var datum = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                    var sifra = reader.GetString(4);
+                    var kol = reader.GetInt32(5);
 
                     if (!paketMinute.TryGetValue(sifra, out var minutNaArtikel)) continue;
                     var minute = kol * minutNaArtikel;
+                    var key = (stevilka, leto);
 
-                    bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
-                    bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
-
-                    vseMinute.TryGetValue(partner, out var existing);
-                    if (jePret)
-                        vseMinute[partner] = (existing.Pret + minute, existing.Tre);
-                    else if (jeTre)
-                        vseMinute[partner] = (existing.Pret, existing.Tre + minute);
+                    if (predracuni.TryGetValue(key, out var existing))
+                        predracuni[key] = (partner, datum, existing.Minute + minute);
+                    else
+                        predracuni[key] = (partner, datum, minute);
                 }
             }
 
-            // 3. Koriščene minute iz OBRACUN_PORABA_MINUT (TIP=1)
-            //    JOIN na FA_PREDRACUN za datum predračuna, da ločimo pretekli/trenutni mesec
-            var korPreteklo = new Dictionary<int, (int Pret, int Tre)>();
-            var korMesec = new Dictionary<int, (int Pret, int Tre)>();
+            if (predracuni.Count == 0) return;
+
+            // 3. Poraba minut iz OBRACUN_PORABA_MINUT (TIP=1) — grupirano po predračunu + obračunski mesec
+            // key = (PREDRACUN_STEVILKA, PREDRACUN_LETO), inner key = mesecKey "M-YY"
+            var poraba = new Dictionary<(string, int), Dictionary<string, int>>();
 
             await using (var cmd = new FbCommand(@"
-                SELECT pm.PARTNER,
-                       EXTRACT(YEAR FROM fp.DATUM) AS PRED_LETO,
-                       EXTRACT(MONTH FROM fp.DATUM) AS PRED_MESEC,
-                       pm.MESEC, pm.LETO,
-                       SUM(pm.KOLICINA) AS SKUPAJ
+                SELECT TRIM(pm.PREDRACUN_STEVILKA), pm.PREDRACUN_LETO, pm.MESEC, pm.LETO, SUM(pm.KOLICINA)
                 FROM OBRACUN_PORABA_MINUT pm
-                JOIN FA_PREDRACUN fp ON fp.STEVILKA = pm.PREDRACUN_STEVILKA AND fp.LETO = pm.PREDRACUN_LETO
                 WHERE pm.TIP = 1
-                  AND fp.DATUM >= @DatumOd AND fp.DATUM <= @DatumDo
-                GROUP BY pm.PARTNER, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), pm.MESEC, pm.LETO", connection))
+                  AND pm.PREDRACUN_STEVILKA IS NOT NULL AND pm.PREDRACUN_LETO IS NOT NULL
+                GROUP BY TRIM(pm.PREDRACUN_STEVILKA), pm.PREDRACUN_LETO, pm.MESEC, pm.LETO", connection))
             {
-                cmd.Parameters.AddWithValue("@DatumOd", datumOd);
-                cmd.Parameters.AddWithValue("@DatumDo", datumDo);
-
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    var partner = reader.GetInt32(0);
-                    var predLetoVal = reader.GetInt32(1);
-                    var predMesecVal = reader.GetInt32(2);
-                    var porMesec = reader.GetInt32(3);
-                    var porLeto = reader.GetInt32(4);
-                    var skupaj = reader.GetInt32(5);
+                    var predSt = reader.GetString(0);
+                    var predLeto = reader.GetInt32(1);
+                    var porMesec = reader.GetInt32(2);
+                    var porLeto = reader.GetInt32(3);
+                    var kolicina = reader.GetInt32(4);
 
-                    bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
-                    bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
-                    if (!jePret && !jeTre) continue;
+                    var mesecKey = $"{porMesec}-{porLeto % 100}";
+                    var predKey = (predSt, predLeto);
 
-                    bool jePretekloObdobje = porLeto < paramLeto || (porLeto == paramLeto && porMesec < paramMesec);
-                    bool jeMesecObdobje = porLeto == paramLeto && porMesec == paramMesec;
-
-                    if (jePretekloObdobje)
+                    if (!poraba.TryGetValue(predKey, out var dict))
                     {
-                        korPreteklo.TryGetValue(partner, out var ex);
-                        if (jePret) korPreteklo[partner] = (ex.Pret + skupaj, ex.Tre);
-                        else korPreteklo[partner] = (ex.Pret, ex.Tre + skupaj);
+                        dict = new Dictionary<string, int>();
+                        poraba[predKey] = dict;
                     }
-                    else if (jeMesecObdobje)
-                    {
-                        korMesec.TryGetValue(partner, out var ex);
-                        if (jePret) korMesec[partner] = (ex.Pret + skupaj, ex.Tre);
-                        else korMesec[partner] = (ex.Pret, ex.Tre + skupaj);
-                    }
+                    dict.TryGetValue(mesecKey, out var ex);
+                    dict[mesecKey] = ex + kolicina;
                 }
             }
 
-            // 4. Nazivi partnerjev — samo partnerji s porabo v tekočem mesecu
-            var vsiPartnerji = korMesec.Keys.ToList();
-
+            // 4. Nazivi partnerjev
+            var partnerIds = predracuni.Values.Select(v => v.Partner).Distinct().ToList();
             var nazivi = new Dictionary<int, string?>();
-            if (vsiPartnerji.Count > 0)
+            if (partnerIds.Count > 0)
             {
-                var partnerIn = string.Join(",", vsiPartnerji);
+                var partnerIn = string.Join(",", partnerIds);
                 await using var cmd = new FbCommand($"SELECT SIFRA, NAZIV FROM PARTNER WHERE SIFRA IN ({partnerIn})", connection);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
@@ -247,28 +241,33 @@
             }
 
             // 5. Sestavi rezultat
-            foreach (var partner in vsiPartnerji.OrderBy(p => nazivi.GetValueOrDefault(p) ?? "").ThenBy(p => p))
+            foreach (var kv in predracuni.OrderBy(x => nazivi.GetValueOrDefault(x.Value.Partner) ?? "").ThenBy(x => x.Value.Datum))
             {
-                vseMinute.TryGetValue(partner, out var vse);
-                korPreteklo.TryGetValue(partner, out var pret);
-                korMesec.TryGetValue(partner, out var mes);
-
-                partnerji.Add(new KoriscenjePredracuniDto
+                var dto = new KoriscenjePredracuniDto
                 {
-                    Partner = partner,
-                    NazivPartnerja = nazivi.GetValueOrDefault(partner),
-                    PretVse = vse.Pret,
-                    PretPreteklo = pret.Pret,
-                    PretMesec = mes.Pret,
-                    TreVse = vse.Tre,
-                    TrePreteklo = pret.Tre,
-                    TreMesec = mes.Tre
-                });
+                    Partner = kv.Value.Partner,
+                    NazivPartnerja = nazivi.GetValueOrDefault(kv.Value.Partner),
+                    Stevilka = kv.Key.Stevilka,
+                    Leto = kv.Key.Leto,
+                    Datum = kv.Value.Datum,
+                    Minute = kv.Value.Minute
+                };
+
+                if (poraba.TryGetValue((kv.Key.Stevilka, kv.Key.Leto), out var porabaDict))
+                {
+                    foreach (var m in mesecLabels)
+                    {
+                        if (porabaDict.TryGetValue(m.Key, out var val) && val != 0)
+                            dto.Poraba[m.Key] = val;
+                    }
+                }
+
+                vrstice.Add(dto);
             }
         }
         catch
         {
-            partnerji.Clear();
+            vrstice.Clear();
         }
         finally
         {

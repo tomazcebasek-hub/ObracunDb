@@ -11,11 +11,17 @@ public static class ExportEndpoints
     {
         var paramMesec = parametri.GetInt(ObracunParam.MesecObracuna);
         var paramLeto = parametri.GetInt(ObracunParam.LetoObracuna);
-        var pretDatum = new DateTime(paramLeto, paramMesec, 1).AddMonths(-1);
-        var pretMesec = pretDatum.Month;
-        var pretLeto = pretDatum.Year;
-        var datumOd = new DateTime(pretLeto, pretMesec, 1);
+        var datumOd = new DateTime(2026, 1, 1);
         var datumDo = new DateTime(paramLeto, paramMesec, 1).AddMonths(1).AddDays(-1);
+
+        var mesecLabels = new List<(string Key, string Label)>();
+        var d = new DateTime(2026, 1, 1);
+        var konec = new DateTime(paramLeto, paramMesec, 1);
+        while (d <= konec)
+        {
+            mesecLabels.Add(($"{d.Month}-{d.Year % 100}", $"{d.Month}.{d.Year % 100}"));
+            d = d.AddMonths(1);
+        }
 
         await using var connection = cm.GetConnection();
         await connection.OpenAsync();
@@ -34,16 +40,16 @@ public static class ExportEndpoints
 
         var sifraIn = string.Join(",", paketMinute.Keys.Select(s => "'" + s.Replace("'", "''") + "'"));
 
-        // 2. "Vse" minute iz predračunov
-        var vseMinute = new Dictionary<int, (int Pret, int Tre)>();
+        // 2. Predračuni z minutami (status 2/5 ali plačani)
+        var predracuni = new Dictionary<(string Stevilka, int Leto), (int Partner, DateTime? Datum, int Minute)>();
 
-        var sqlVse = "SELECT fp.SIFRA_KUPCA, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), TRIM(k.SIFRA), CAST(k.KOLICINA AS INTEGER)"
+        var sqlPred = "SELECT fp.STEVILKA, fp.LETO, fp.SIFRA_KUPCA, fp.DATUM, TRIM(k.SIFRA), CAST(k.KOLICINA AS INTEGER)"
             + " FROM FA_PREDRACUN fp"
             + " JOIN FA_PREDRACUN_KNJIZBA k ON k.STEVILKA = fp.STEVILKA AND k.LETO = fp.LETO"
             + $" WHERE fp.DATUM >= '{datumOd:yyyy-MM-dd}' AND fp.DATUM <= '{datumDo:yyyy-MM-dd}'"
             + " AND TRIM(k.SIFRA) IN (" + sifraIn + ")"
             + " AND ("
-            + "   fp.STANJE = 5"
+            + "   fp.STANJE IN (2, 5)"
             + "   OR EXISTS ("
             + "     SELECT 1 FROM FA_RACUN_PLACILO rp"
             + "     WHERE rp.PREDRACUN_STEVILKA = fp.STEVILKA AND rp.PREDRACUN_LETO = fp.LETO"
@@ -51,86 +57,70 @@ public static class ExportEndpoints
             + "   )"
             + " )";
 
-        await using (var cmd = new FbCommand(sqlVse, connection))
+        await using (var cmd = new FbCommand(sqlPred, connection))
         {
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var partner = reader.GetInt32(0);
-                var predLetoVal = reader.GetInt32(1);
-                var predMesecVal = reader.GetInt32(2);
-                var sifra = reader.GetString(3);
-                var kol = reader.GetInt32(4);
+                var stevilka = reader.GetString(0).Trim();
+                var leto = reader.GetInt32(1);
+                var partner = reader.GetInt32(2);
+                var datum = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                var sifra = reader.GetString(4);
+                var kol = reader.GetInt32(5);
 
                 if (!paketMinute.TryGetValue(sifra, out var minutNaArtikel)) continue;
                 var minute = kol * minutNaArtikel;
+                var key = (stevilka, leto);
 
-                bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
-                bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
-
-                vseMinute.TryGetValue(partner, out var existing);
-                if (jePret) vseMinute[partner] = (existing.Pret + minute, existing.Tre);
-                else if (jeTre) vseMinute[partner] = (existing.Pret, existing.Tre + minute);
+                if (predracuni.TryGetValue(key, out var existing))
+                    predracuni[key] = (partner, datum, existing.Minute + minute);
+                else
+                    predracuni[key] = (partner, datum, minute);
             }
         }
 
-        // 3. Koriščene minute
-        var korPreteklo = new Dictionary<int, (int Pret, int Tre)>();
-        var korMesec = new Dictionary<int, (int Pret, int Tre)>();
+        if (predracuni.Count == 0)
+            return Results.File(new MemoryStream(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "koriscenje-predracuni.xlsx");
+
+        // 3. Poraba minut iz OBRACUN_PORABA_MINUT (TIP=1) po predračunu + obračunski mesec
+        var poraba = new Dictionary<(string, int), Dictionary<string, int>>();
 
         await using (var cmd = new FbCommand(@"
-            SELECT pm.PARTNER,
-                   EXTRACT(YEAR FROM fp.DATUM) AS PRED_LETO,
-                   EXTRACT(MONTH FROM fp.DATUM) AS PRED_MESEC,
-                   pm.MESEC, pm.LETO,
-                   SUM(pm.KOLICINA) AS SKUPAJ
+            SELECT TRIM(pm.PREDRACUN_STEVILKA), pm.PREDRACUN_LETO, pm.MESEC, pm.LETO, SUM(pm.KOLICINA)
             FROM OBRACUN_PORABA_MINUT pm
-            JOIN FA_PREDRACUN fp ON fp.STEVILKA = pm.PREDRACUN_STEVILKA AND fp.LETO = pm.PREDRACUN_LETO
             WHERE pm.TIP = 1
-              AND fp.DATUM >= @DatumOd AND fp.DATUM <= @DatumDo
-            GROUP BY pm.PARTNER, EXTRACT(YEAR FROM fp.DATUM), EXTRACT(MONTH FROM fp.DATUM), pm.MESEC, pm.LETO", connection))
+              AND pm.PREDRACUN_STEVILKA IS NOT NULL AND pm.PREDRACUN_LETO IS NOT NULL
+            GROUP BY TRIM(pm.PREDRACUN_STEVILKA), pm.PREDRACUN_LETO, pm.MESEC, pm.LETO", connection))
         {
-            cmd.Parameters.AddWithValue("@DatumOd", datumOd);
-            cmd.Parameters.AddWithValue("@DatumDo", datumDo);
-
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                var partner = reader.GetInt32(0);
-                var predLetoVal = reader.GetInt32(1);
-                var predMesecVal = reader.GetInt32(2);
-                var porMesec = reader.GetInt32(3);
-                var porLeto = reader.GetInt32(4);
-                var skupaj = reader.GetInt32(5);
+                var predSt = reader.GetString(0);
+                var predLeto = reader.GetInt32(1);
+                var porMesec = reader.GetInt32(2);
+                var porLeto = reader.GetInt32(3);
+                var kolicina = reader.GetInt32(4);
 
-                bool jePret = predLetoVal == pretLeto && predMesecVal == pretMesec;
-                bool jeTre = predLetoVal == paramLeto && predMesecVal == paramMesec;
-                if (!jePret && !jeTre) continue;
+                var mesecKey = $"{porMesec}-{porLeto % 100}";
+                var predKey = (predSt, predLeto);
 
-                bool jePretekloObdobje = porLeto < paramLeto || (porLeto == paramLeto && porMesec < paramMesec);
-                bool jeMesecObdobje = porLeto == paramLeto && porMesec == paramMesec;
-
-                if (jePretekloObdobje)
+                if (!poraba.TryGetValue(predKey, out var dict))
                 {
-                    korPreteklo.TryGetValue(partner, out var ex);
-                    if (jePret) korPreteklo[partner] = (ex.Pret + skupaj, ex.Tre);
-                    else korPreteklo[partner] = (ex.Pret, ex.Tre + skupaj);
+                    dict = new Dictionary<string, int>();
+                    poraba[predKey] = dict;
                 }
-                else if (jeMesecObdobje)
-                {
-                    korMesec.TryGetValue(partner, out var ex);
-                    if (jePret) korMesec[partner] = (ex.Pret + skupaj, ex.Tre);
-                    else korMesec[partner] = (ex.Pret, ex.Tre + skupaj);
-                }
+                dict.TryGetValue(mesecKey, out var ex);
+                dict[mesecKey] = ex + kolicina;
             }
         }
 
-        // 4. Nazivi partnerjev — samo partnerji s porabo v tekočem mesecu
-        var vsiPartnerji = korMesec.Keys.ToList();
+        // 4. Nazivi partnerjev
+        var partnerIds = predracuni.Values.Select(v => v.Partner).Distinct().ToList();
         var nazivi = new Dictionary<int, string?>();
-        if (vsiPartnerji.Count > 0)
+        if (partnerIds.Count > 0)
         {
-            var partnerIn = string.Join(",", vsiPartnerji);
+            var partnerIn = string.Join(",", partnerIds);
             await using var cmd = new FbCommand($"SELECT SIFRA, NAZIV FROM PARTNER WHERE SIFRA IN ({partnerIn})", connection);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -141,32 +131,39 @@ public static class ExportEndpoints
         using var wb = new XLWorkbook();
         var ws = wb.Worksheets.Add("Koriščenje");
 
-        var pretLabel = $"{pretMesec}.{pretLeto % 100}";
-        var treLabel = $"{paramMesec}.{paramLeto % 100}";
-        string[] headers = ["Šifra", "Partner",
-            $"{pretLabel} Vse", $"{pretLabel} Pret.", $"{pretLabel} Mes.", $"{pretLabel} Preost.",
-            $"{treLabel} Vse", $"{treLabel} Pret.", $"{treLabel} Mes.", $"{treLabel} Preost."];
-        for (int c = 0; c < headers.Length; c++)
+        var headers = new List<string> { "Šifra", "Partner", "Pred.št.", "Leto", "Datum", "Minute" };
+        foreach (var m in mesecLabels)
+            headers.Add(m.Label);
+        headers.Add("Preostalo");
+
+        for (int c = 0; c < headers.Count; c++)
             ws.Cell(1, c + 1).Value = headers[c];
         ws.Row(1).Style.Font.Bold = true;
 
         int row = 2;
-        foreach (var partner in vsiPartnerji.OrderBy(p => nazivi.GetValueOrDefault(p) ?? "").ThenBy(p => p))
+        foreach (var kv in predracuni.OrderBy(x => nazivi.GetValueOrDefault(x.Value.Partner) ?? "").ThenBy(x => x.Value.Datum))
         {
-            vseMinute.TryGetValue(partner, out var vse);
-            korPreteklo.TryGetValue(partner, out var pret);
-            korMesec.TryGetValue(partner, out var mes);
+            ws.Cell(row, 1).Value = kv.Value.Partner;
+            ws.Cell(row, 2).Value = nazivi.GetValueOrDefault(kv.Value.Partner);
+            ws.Cell(row, 3).Value = kv.Key.Stevilka;
+            ws.Cell(row, 4).Value = kv.Key.Leto;
+            if (kv.Value.Datum.HasValue)
+                ws.Cell(row, 5).Value = kv.Value.Datum.Value;
+            ws.Cell(row, 5).Style.DateFormat.Format = "dd.MM.yyyy";
+            ws.Cell(row, 6).Value = kv.Value.Minute;
 
-            ws.Cell(row, 1).Value = partner;
-            ws.Cell(row, 2).Value = nazivi.GetValueOrDefault(partner);
-            ws.Cell(row, 3).Value = vse.Pret;
-            ws.Cell(row, 4).Value = pret.Pret;
-            ws.Cell(row, 5).Value = mes.Pret;
-            ws.Cell(row, 6).Value = vse.Pret - pret.Pret - mes.Pret;
-            ws.Cell(row, 7).Value = vse.Tre;
-            ws.Cell(row, 8).Value = pret.Tre;
-            ws.Cell(row, 9).Value = mes.Tre;
-            ws.Cell(row, 10).Value = vse.Tre - pret.Tre - mes.Tre;
+            poraba.TryGetValue((kv.Key.Stevilka, kv.Key.Leto), out var porabaDict);
+            int skupajPorabljeno = 0;
+            int col = 7;
+            foreach (var m in mesecLabels)
+            {
+                var val = porabaDict?.GetValueOrDefault(m.Key) ?? 0;
+                if (val != 0)
+                    ws.Cell(row, col).Value = val;
+                skupajPorabljeno += val;
+                col++;
+            }
+            ws.Cell(row, col).Value = kv.Value.Minute - skupajPorabljeno;
             row++;
         }
 

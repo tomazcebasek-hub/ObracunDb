@@ -360,8 +360,8 @@ namespace ObracunDb.Services
             );
 
             // Predračuni
-            // 1. Naloži predračune z datumom v tekočem ali preteklem mesecu
-            var datumOd = new DateTime(leto, mesec, 1).AddMonths(-1);
+            // 1. Naloži predračune z datumom od 1.1.2026 naprej do konca tekočega meseca
+            var datumOd = new DateTime(2026, 1, 1);
             var datumDo = new DateTime(leto, mesec, 1).AddMonths(1).AddDays(-1);
             var vsiPredracuni = db.FaPredracun
                 .Where(pr => pr.Datum >= datumOd && pr.Datum <= datumDo)
@@ -401,7 +401,7 @@ namespace ObracunDb.Services
                 .Where(pr => pr.Stanje == 2 || pr.Stanje == 5 || placilaPoPredracunih.ContainsKey((pr.Stevilka, pr.Leto)))
                 .ToList();
 
-            // 4. DEBUG: Izpiši plačane predračune
+            // 4. Plačani predračuni
             var placaniPredracuni = predracuni
                 .Where(pr => placilaPoPredracunih.ContainsKey((pr.Stevilka, pr.Leto)))
                 .OrderBy(pr => pr.Leto).ThenBy(pr => pr.Stevilka)
@@ -956,7 +956,9 @@ namespace ObracunDb.Services
                     Kolicina = kolicina,
                     Cena = cena,
                     Rabat = rabat,
-                    TipPostavke = TipPostavke.POGODBA
+                    TipPostavke = TipPostavke.POGODBA,
+                    PogodbaStevilka = pogodba.Stevilka,
+                    PogodbaLeto = pogodba.Leto
                 });
             }
             else
@@ -1062,9 +1064,6 @@ namespace ObracunDb.Services
                     minuteNeobracunane += minutNaloga;
                 }
 
-                if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG MIN] Nalog {nalog.Stevilka}/{nalog.Leto}: trajanje={trajanje} min, razdelitev={razdelitevNaloga}, seObracunajo={seObracunajoMinute}, Fakturirana={nalog.Fakturirana}, ObracunDn={(obracunDn != null ? obracunDn.KajObracunam.ToText() : "NULL")}, obvezno={jeObveznoZaracunaj}");
-
                 var obracunDnInfo = "";
                 if (nalog.Fakturirana != 0)
                     obracunDnInfo += $", [FAKT={nalog.Fakturirana}]";
@@ -1138,9 +1137,7 @@ namespace ObracunDb.Services
                 // === Obdelaj kilometrino (samo za naloge z Fakturirana=0) ===
                 if (nalog.Fakturirana != 1)
                     ObdelajKilometrino(ctx, nalog, obracunDn, opis, ref naslednjZs, data.Partner, manjkajoceSifre);
-                else if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG KM] Partner {data.Partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - Fakturirana={nalog.Fakturirana} (!=0)");
-            } // po nalogih
+                } // po nalogih
 
             // Izpiši skupno razdelitev minut za partnerja
             if (skupnaRazdelitev.SkupajMinut > 0)
@@ -1159,15 +1156,7 @@ namespace ObracunDb.Services
                 sklad.PogodbaPreostalo = 0;
             }
 
-            if (data.Partner == 314910)
-            {
-                ctx.Log.Add($"[DEBUG MIN] === SKUPAJ: obračunane={minuteObracunane}, neobračunane={minuteNeobracunane}, imaPogodbo={imaPogodbo}, imaHelpdesk={imaHelpdeskNalogeZaObracun}");
-                ctx.Log.Add($"[DEBUG MIN] === DOBROIMETJE: minuteVPlus={minuteVPlus} (predračun={sklad.PredracunPreostalo}, ročni={minuteRocni}, pogodbe={minutePogodbe} (vključene={imaHelpdeskNalogeZaObracun}), partnerMinute={sklad.PartnerMinutePreostalo})");
-                ctx.Log.Add($"[DEBUG MIN] === RAZDELITEV obračunane: {obracunaneRazdelitev}");
-                ctx.Log.Add($"[DEBUG MIN] === RAZDELITEV obvezno: {obveznoRazdelitev}");
-            }
-
-            // === Za partnerje BREZ POGODBE ustvari postavke za obračunane minute ===
+            // === Za partnerje BREZ POGODBE
             if (!imaPogodbo && minuteObracunane > 0)
             {
                 opis.AppendLine();
@@ -1179,50 +1168,35 @@ namespace ObracunDb.Services
                     // ObveznoZaracunaj minute se ne odštevajo - izloči jih pred odštetjem
                     var preostaleMinuteVPlus = minuteVPlus;
 
-                    if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN] ODŠTEVANJE DOBROIMETJA (brez pogodbe): minuteVPlus={minuteVPlus}, predračun={sklad.PredracunPreostalo}, ročni={minuteRocni}, pogodbe={minutePogodbe}, partnerMinute={sklad.PartnerMinutePreostalo}");
-
                     // Delavnik - dnevna (7-16)
                     var delavnikDnevnaZaObracun = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna;
                     if (preostaleMinuteVPlus > 0 && delavnikDnevnaZaObracun > 0)
                     {
                         var odsteto = Math.Min(delavnikDnevnaZaObracun, preostaleMinuteVPlus);
-                        if (data.Partner == 314910)
-                            ctx.Log.Add($"[DEBUG MIN]   Del7-16: obračunane={obracunaneRazdelitev.Delavnik_Dnevna}, obvezno={obveznoRazdelitev.Delavnik_Dnevna}, zaObračun={delavnikDnevnaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                         delavnikDnevnaZaObracun -= odsteto;
                         preostaleMinuteVPlus -= odsteto;
                         minuteKoriscene += odsteto;
                     }
-                    else if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del7-16: obračunane={obracunaneRazdelitev.Delavnik_Dnevna}, obvezno={obveznoRazdelitev.Delavnik_Dnevna}, zaObračun={delavnikDnevnaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                     // Delavnik - popoldanska (16-22)
                     var delavnikPopoldanskaZaObracun = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska;
                     if (preostaleMinuteVPlus > 0 && delavnikPopoldanskaZaObracun > 0)
                     {
                         var odsteto = Math.Min(delavnikPopoldanskaZaObracun, preostaleMinuteVPlus);
-                        if (data.Partner == 314910)
-                            ctx.Log.Add($"[DEBUG MIN]   Del16-22: obračunane={obracunaneRazdelitev.Delavnik_Popoldanska}, obvezno={obveznoRazdelitev.Delavnik_Popoldanska}, zaObračun={delavnikPopoldanskaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                         delavnikPopoldanskaZaObracun -= odsteto;
                         preostaleMinuteVPlus -= odsteto;
                         minuteKoriscene += odsteto;
                     }
-                    else if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del16-22: obračunane={obracunaneRazdelitev.Delavnik_Popoldanska}, obvezno={obveznoRazdelitev.Delavnik_Popoldanska}, zaObračun={delavnikPopoldanskaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                     // Delavnik - nočna (22-7)
                     var delavnikNocnaZaObracun = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna;
                     if (preostaleMinuteVPlus > 0 && delavnikNocnaZaObracun > 0)
                     {
                         var odsteto = Math.Min(delavnikNocnaZaObracun, preostaleMinuteVPlus);
-                        if (data.Partner == 314910)
-                            ctx.Log.Add($"[DEBUG MIN]   Del22-7: obračunane={obracunaneRazdelitev.Delavnik_Nocna}, obvezno={obveznoRazdelitev.Delavnik_Nocna}, zaObračun={delavnikNocnaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                         delavnikNocnaZaObracun -= odsteto;
                         preostaleMinuteVPlus -= odsteto;
                         minuteKoriscene += odsteto;
                     }
-                    else if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del22-7: obračunane={obracunaneRazdelitev.Delavnik_Nocna}, obvezno={obveznoRazdelitev.Delavnik_Nocna}, zaObračun={delavnikNocnaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                     // Prištej obvezne minute nazaj (ObveznoZaracunaj - ne gredo skozi dobroimetje)
                     delavnikDnevnaZaObracun += obveznoRazdelitev.Delavnik_Dnevna;
@@ -1238,13 +1212,6 @@ namespace ObracunDb.Services
                             obracunaneRazdelitev.Vikend_Dnevna, obracunaneRazdelitev.Vikend_Popoldanska, obracunaneRazdelitev.Vikend_Nocna,
                             obracunaneRazdelitev.Praznik_Dnevna, obracunaneRazdelitev.Praznik_Popoldanska, obracunaneRazdelitev.Praznik_Nocna,
                             opis, data.Partner, ctx.Log);
-
-                    if (data.Partner == 314910)
-                    {
-                        ctx.Log.Add($"[DEBUG MIN] BREZ POGODBE po toleranci ({ctx.TolerancaMinut} min): Del7-16={tDel7_16}, Del16-22={tDel16_22}, Del22-7={tDel22_7}, Vik7-16={tVik7_16}, Vik16-22={tVik16_22}, Vik22-7={tVik22_7}, Pra7-16={tPra7_16}, Pra16-22={tPra16_22}, Pra22-7={tPra22_7}");
-                        ctx.Log.Add($"[DEBUG MIN] ŠIFRE brez pogodbe: Del7-16={ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Dnevna)}, Del16-22={ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Popoldanska)}, Del22-7={ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Nocna)}");
-                        ctx.Log.Add($"[DEBUG MIN] KORIŠČENE minute dobroimetja: {minuteKoriscene}, preostaleVPlus={preostaleMinuteVPlus}");
-                    }
 
                     UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tDel7_16, opis, ref naslednjZs, manjkajoceSifre);
                     UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tDel16_22, opis, ref naslednjZs, manjkajoceSifre);
@@ -1270,50 +1237,35 @@ namespace ObracunDb.Services
                 // ObveznoZaracunaj minute se ne odštevajo - izloči jih pred odštetjem
                 var preostaleMinuteVPlus = minuteVPlus;
 
-                if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG MIN] ODŠTEVANJE DOBROIMETJA (s pogodbo): minuteVPlus={minuteVPlus}, predračun={sklad.PredracunPreostalo}, ročni={minuteRocni}, pogodbe={minutePogodbe}, partnerMinute={sklad.PartnerMinutePreostalo}");
-
                 // Delavnik - dnevna (7-16)
                 var delavnikDnevnaZaObracun = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna;
                 if (preostaleMinuteVPlus > 0 && delavnikDnevnaZaObracun > 0)
                 {
                     var odsteto = Math.Min(delavnikDnevnaZaObracun, preostaleMinuteVPlus);
-                    if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del7-16: obračunane={obracunaneRazdelitev.Delavnik_Dnevna}, obvezno={obveznoRazdelitev.Delavnik_Dnevna}, zaObračun={delavnikDnevnaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                     delavnikDnevnaZaObracun -= odsteto;
                     preostaleMinuteVPlus -= odsteto;
                     minuteKoriscene += odsteto;
                 }
-                else if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG MIN]   Del7-16: obračunane={obracunaneRazdelitev.Delavnik_Dnevna}, obvezno={obveznoRazdelitev.Delavnik_Dnevna}, zaObračun={delavnikDnevnaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                 // Delavnik - popoldanska (16-22)
                 var delavnikPopoldanskaZaObracun = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska;
                 if (preostaleMinuteVPlus > 0 && delavnikPopoldanskaZaObracun > 0)
                 {
                     var odsteto = Math.Min(delavnikPopoldanskaZaObracun, preostaleMinuteVPlus);
-                    if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del16-22: obračunane={obracunaneRazdelitev.Delavnik_Popoldanska}, obvezno={obveznoRazdelitev.Delavnik_Popoldanska}, zaObračun={delavnikPopoldanskaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                     delavnikPopoldanskaZaObracun -= odsteto;
                     preostaleMinuteVPlus -= odsteto;
                     minuteKoriscene += odsteto;
                 }
-                else if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG MIN]   Del16-22: obračunane={obracunaneRazdelitev.Delavnik_Popoldanska}, obvezno={obveznoRazdelitev.Delavnik_Popoldanska}, zaObračun={delavnikPopoldanskaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                 // Delavnik - nočna (22-7)
                 var delavnikNocnaZaObracun = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna;
                 if (preostaleMinuteVPlus > 0 && delavnikNocnaZaObracun > 0)
                 {
                     var odsteto = Math.Min(delavnikNocnaZaObracun, preostaleMinuteVPlus);
-                    if (data.Partner == 314910)
-                        ctx.Log.Add($"[DEBUG MIN]   Del22-7: obračunane={obracunaneRazdelitev.Delavnik_Nocna}, obvezno={obveznoRazdelitev.Delavnik_Nocna}, zaObračun={delavnikNocnaZaObracun} → odšteto={odsteto}, preostalo={preostaleMinuteVPlus - odsteto}");
                     delavnikNocnaZaObracun -= odsteto;
                     preostaleMinuteVPlus -= odsteto;
                     minuteKoriscene += odsteto;
                 }
-                else if (data.Partner == 314910)
-                    ctx.Log.Add($"[DEBUG MIN]   Del22-7: obračunane={obracunaneRazdelitev.Delavnik_Nocna}, obvezno={obveznoRazdelitev.Delavnik_Nocna}, zaObračun={delavnikNocnaZaObracun} → nič za odšteti (vPlus={preostaleMinuteVPlus})");
 
                 // Prištej obvezne minute nazaj (ObveznoZaracunaj - ne gredo skozi dobroimetje)
                 delavnikDnevnaZaObracun += obveznoRazdelitev.Delavnik_Dnevna;
@@ -1329,13 +1281,6 @@ namespace ObracunDb.Services
                         obracunaneRazdelitev.Vikend_Dnevna, obracunaneRazdelitev.Vikend_Popoldanska, obracunaneRazdelitev.Vikend_Nocna,
                         obracunaneRazdelitev.Praznik_Dnevna, obracunaneRazdelitev.Praznik_Popoldanska, obracunaneRazdelitev.Praznik_Nocna,
                         opis, data.Partner, ctx.Log);
-
-                if (data.Partner == 314910)
-                {
-                    ctx.Log.Add($"[DEBUG MIN] S POGODBO po toleranci ({ctx.TolerancaMinut} min): Del7-16={tDel7_16}, Del16-22={tDel16_22}, Del22-7={tDel22_7}, Vik7-16={tVik7_16}, Vik16-22={tVik16_22}, Vik22-7={tVik22_7}, Pra7-16={tPra7_16}, Pra16-22={tPra16_22}, Pra22-7={tPra22_7}");
-                    ctx.Log.Add($"[DEBUG MIN] ŠIFRE pogodba: Del7-16={ctx.ServisneNastavitve.GetSifraPogodba(TipDneva.Delavnik, CasovnaTarifa.Dnevna)}, Del16-22={ctx.ServisneNastavitve.GetSifraPogodba(TipDneva.Delavnik, CasovnaTarifa.Popoldanska)}, Del22-7={ctx.ServisneNastavitve.GetSifraPogodba(TipDneva.Delavnik, CasovnaTarifa.Nocna)}");
-                    ctx.Log.Add($"[DEBUG MIN] KORIŠČENE minute dobroimetja: {minuteKoriscene}, preostaleVPlus={preostaleMinuteVPlus}");
-                }
 
                 UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tDel7_16, opis, ref naslednjZs, manjkajoceSifre);
                 UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tDel16_22, opis, ref naslednjZs, manjkajoceSifre);
@@ -1547,36 +1492,7 @@ namespace ObracunDb.Services
         }
 
         /// <summary>
-        /// DEBUG: Izpiše prispevek naloga k postavkam.
-        /// </summary>
-        private static void IzpisiPrispevekNaloga(ObracunContext ctx, MinuteRazdelitev razdelitev, bool imaPogodbo)
-        {
-            // Vse minute prispevajo (tako za pogodbo kot brez)
-            var postavke = new List<string>();
-
-            // Delavnik
-            if (razdelitev.Delavnik_Dnevna > 0) postavke.Add($"Del 7-16: {razdelitev.Delavnik_Dnevna} min");
-            if (razdelitev.Delavnik_Popoldanska > 0) postavke.Add($"Del 16-22: {razdelitev.Delavnik_Popoldanska} min");
-            if (razdelitev.Delavnik_Nocna > 0) postavke.Add($"Del 22-7: {razdelitev.Delavnik_Nocna} min");
-            // Vikend
-            if (razdelitev.Vikend_Dnevna > 0) postavke.Add($"Vik 7-16: {razdelitev.Vikend_Dnevna} min");
-            if (razdelitev.Vikend_Popoldanska > 0) postavke.Add($"Vik 16-22: {razdelitev.Vikend_Popoldanska} min");
-            if (razdelitev.Vikend_Nocna > 0) postavke.Add($"Vik 22-7: {razdelitev.Vikend_Nocna} min");
-            // Praznik
-            if (razdelitev.Praznik_Dnevna > 0) postavke.Add($"Pra 7-16: {razdelitev.Praznik_Dnevna} min");
-            if (razdelitev.Praznik_Popoldanska > 0) postavke.Add($"Pra 16-22: {razdelitev.Praznik_Popoldanska} min");
-            if (razdelitev.Praznik_Nocna > 0) postavke.Add($"Pra 22-7: {razdelitev.Praznik_Nocna} min");
-
-            if (postavke.Count > 0)
-            {
-                var pogodbaSufiks = imaPogodbo ? " (pogodba)" : "";
-                ctx.Log.Add($"[DEBUG]      -> Prispevek{pogodbaSufiks}: {string.Join(", ", postavke)}");
-            }
-        }
-
-
-        /// <summary>
-        /// Zapiše razdelitev minut naloga v tabelo OBRACUN_OSNUTEK_NALOG_OBRACUN z odštevanjem.
+        /// Zapiše razdelitev minut naloga
         /// </summary>
         private static void ZapisiNalogObracun(ObracunContext ctx, FaDnNalog nalog, MinuteRazdelitev razdelitev, int obracunam, bool imaPogodbo, MinutniSklad? sklad, HashSet<(string PredStevilka, int PredLeto)>? povezaniPredracuni, int trajanjeNaloga)
         {
@@ -1680,43 +1596,28 @@ namespace ObracunDb.Services
 
         private static void ObdelajKilometrino(ObracunContext ctx, FaDnNalog nalog, ObracunDn? obracunDn, StringBuilder opis, ref int naslednjZs, int partner, HashSet<string> manjkajoceSifre)
         {
-            var jeDebug = partner == 314910;
-
             // Preveri ali se kilometri obračunajo (KajObracunam mora biti KmMin ali Km)
             if (obracunDn == null)
-            {
-                if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - obracunDn je NULL");
                 return;
-            }
 
             if (obracunDn.KajObracunam != KajObracunam.KmMin && obracunDn.KajObracunam != KajObracunam.Km && obracunDn.KajObracunam != KajObracunam.ObveznoZaracunaj)
-            {
-                if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - KajObracunam={obracunDn.KajObracunam} (ni KmMin/Km/ObveznoZaracunaj)");
                 return;
-            }
 
             // Preveri ali je šifra kilometrine nastavljena
             if (string.IsNullOrEmpty(ctx.SifraKilometrina))
             {
-                if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - SifraKilometrina ni nastavljena");
                 manjkajoceSifre.Add("Šifra kilometrine ni nastavljena v Parametri > Servisna");
                 return;
             }
 
             // Preveri ali se številka ne obračuna (helper)
             if (!NalogHelper.SeObracunaKilometrina(nalog.Stevilka))
-            {
-                if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - SeObracunaKilometrina=false (helpdesk nalog)");
                 return;
-            }
 
             // Pridobi kilometre iz naloga (SIF30)
             var km = (decimal)nalog.Sif30;
             if (km <= 0)
-            {
-                if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: PRESKOČEN - SIF30={nalog.Sif30} (km <= 0)");
                 return;
-            }
 
             // Polovična kilometrina: SIF29 = 1
             var jePolovicna = nalog.Sif29 == 1;
@@ -1739,7 +1640,6 @@ namespace ObracunDb.Services
             var vrednostStr = vrednost.ToString("N2").PadLeft(10);
 
             var polovicnaOznaka = jePolovicna ? " (1/2)" : "";
-            if (jeDebug) ctx.Log.Add($"[DEBUG KM] Partner {partner}, Nalog {nalog.Stevilka}/{nalog.Leto}: ZARAČUNAM - SIF30={nalog.Sif30}, km={km}, SIF29={nalog.Sif29}, polovična={jePolovicna}, cena={cena}");
             opis.AppendLine($"   + {sifraStr} {nazivStr} {enotaStr} {kolicinaStr} {cenaStr} {rabatStr} {vrednostStr}{polovicnaOznaka}");
 
             // Shrani postavko v bazo

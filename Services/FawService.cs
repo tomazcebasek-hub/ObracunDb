@@ -16,6 +16,9 @@ public class FawCache
     public Dictionary<(int Stevilka, int Leto), List<FaPogodbePoz>> PostavkePogodb { get; set; } = new();
     public Dictionary<int, List<(string StevilkaNaloga, int LetoNaloga)>> NalogiPoPartnerju { get; set; } = new();
     public Dictionary<(string Stevilka, int Leto), DateTime> DatumiNalogov { get; set; } = new();
+    public Dictionary<int, List<ObracunLoceniRacun>> LoceniRacuni { get; set; } = new();
+    public Dictionary<(string Stevilka, int Leto), FaDnNalog> NalogiEntity { get; set; } = new();
+    public Dictionary<int, List<ObracunOsnutekRacun>> OsnutekRacuni { get; set; } = new();
 }
 
 public class FawStanje
@@ -67,18 +70,41 @@ public class FawService
             .Distinct()
             .ToList();
 
-        var zePreneseni = db.ObracunOsnutek
+        // Partnerji z RacunStevilka v osnutku (navadni)
+        var zePreneseniOsnutek = db.ObracunOsnutek
             .Where(o => o.Mesec == mesec && o.Leto == leto && o.RacunStevilka != null && o.RacunLeto != null)
             .Select(o => o.Partner)
-            .Distinct()
-            .Count();
+            .ToHashSet();
+
+        // Ločeni partnerji — prenesen je šele, ko imajo VSI njegovi računi RacunStevilka
+        var loceniRacuni = db.ObracunOsnutekRacun
+            .Where(r => r.Mesec == mesec && r.Leto == leto)
+            .ToList();
+        var loceniPoPartnerju = loceniRacuni.GroupBy(r => r.Partner).ToDictionary(g => g.Key, g => g.ToList());
+        var loceniPartnerji = loceniPoPartnerju.Keys.ToHashSet();
+
+        int zePrenesenih = 0;
+        foreach (var partner in vsiPartnerji)
+        {
+            if (loceniPartnerji.Contains(partner))
+            {
+                // Ločen partner: prenesen šele ko vsi računi imajo stevilko
+                var racuni = loceniPoPartnerju[partner];
+                if (racuni.All(r => r.RacunStevilka != null && r.RacunLeto != null))
+                    zePrenesenih++;
+            }
+            else if (zePreneseniOsnutek.Contains(partner))
+            {
+                zePrenesenih++;
+            }
+        }
 
         return new FawStanje
         {
             Mesec = mesec,
             Leto = leto,
             SkupajRacunov = vsiPartnerji.Count,
-            ZePrenesenih = zePreneseni
+            ZePrenesenih = zePrenesenih
         };
     }
 
@@ -92,10 +118,33 @@ public class FawService
             .Distinct()
             .ToList();
 
-        var zePreneseni = db.ObracunOsnutek
+        // Navadni partnerji (brez ločenih računov) — preneseni ko imajo RacunStevilka v osnutku
+        var zePreneseniOsnutek = db.ObracunOsnutek
             .Where(o => o.Mesec == mesec && o.Leto == leto && o.RacunStevilka != null && o.RacunLeto != null)
             .Select(o => o.Partner)
             .ToHashSet();
+
+        // Ločeni partnerji — preneseni šele ko VSI računi imajo RacunStevilka
+        var loceniRacuni = db.ObracunOsnutekRacun
+            .Where(r => r.Mesec == mesec && r.Leto == leto)
+            .ToList();
+        var loceniPoPartnerju = loceniRacuni.GroupBy(r => r.Partner).ToDictionary(g => g.Key, g => g.ToList());
+        var loceniPartnerji = loceniPoPartnerju.Keys.ToHashSet();
+
+        var zePreneseni = new HashSet<int>();
+        foreach (var partner in vsiPartnerji)
+        {
+            if (loceniPartnerji.Contains(partner))
+            {
+                var racuni = loceniPoPartnerju[partner];
+                if (racuni.All(r => r.RacunStevilka != null && r.RacunLeto != null))
+                    zePreneseni.Add(partner);
+            }
+            else if (zePreneseniOsnutek.Contains(partner))
+            {
+                zePreneseni.Add(partner);
+            }
+        }
 
         return vsiPartnerji
             .Where(p => !zePreneseni.Contains(p))
@@ -164,12 +213,28 @@ public class FawService
         var letaNalogov = vsiNalogi.Select(n => n.LetoNaloga).Distinct().ToList();
         if (stevilkeNalogov.Count > 0)
         {
-            cache.DatumiNalogov = db.FaDnNalog
+            var nalogiEntities = db.FaDnNalog
                 .Where(n => stevilkeNalogov.Contains(n.Stevilka) && letaNalogov.Contains(n.Leto))
-                .Select(n => new { n.Stevilka, n.Leto, n.Datum })
-                .ToList()
+                .ToList();
+
+            cache.DatumiNalogov = nalogiEntities
                 .ToDictionary(n => (n.Stevilka, n.Leto), n => n.Datum);
+
+            cache.NalogiEntity = nalogiEntities
+                .ToDictionary(n => (n.Stevilka, n.Leto));
         }
+
+        // Ločeni računi
+        cache.LoceniRacuni = db.ObracunLoceniRacun.ToList()
+            .GroupBy(lr => lr.Partner)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Obstoječi zapisani računi za ločene partnerje
+        cache.OsnutekRacuni = db.ObracunOsnutekRacun
+            .Where(r => r.Mesec == mesec && r.Leto == leto)
+            .ToList()
+            .GroupBy(r => r.Partner)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         return cache;
     }
@@ -247,125 +312,360 @@ public class FawService
                 return rezultat;
             }
 
-            if (osnutek.RacunStevilka != null && osnutek.RacunLeto != null)
-            {
-                rezultat.Uspeh = true;
-                rezultat.RacunStevilka = osnutek.RacunStevilka;
-                rezultat.RacunLeto = osnutek.RacunLeto;
-                rezultat.Sporocilo = $"Račun že zapisan: {osnutek.RacunStevilka}/{osnutek.RacunLeto}";
-                return rezultat;
-            }
-
             if (!cache.Postavke.TryGetValue(partner, out var postavke) || postavke.Count == 0)
             {
                 rezultat.Sporocilo = "Ni postavk za tega partnerja.";
                 return rezultat;
             }
 
-            cache.Partnerji.TryGetValue(partner, out var partnerData);
-            var rokPlacilaPartner = (partnerData?.RokPlacila ?? 0) > 0 ? partnerData!.RokPlacila!.Value : 8;
-            var datumStoritveOd = new DateTime(leto, mesec, 1);
-            var jeLetnaPogodba = osnutek.LetnaPogodba == 1;
-            var datumStoritveDo = jeLetnaPogodba
-                ? datumStoritveOd.AddYears(1).AddDays(-1)
-                : datumStoritveOd.AddMonths(1).AddDays(-1);
+            // Ali je ločen partner?
+            var jeLocen = cache.LoceniRacuni.TryGetValue(partner, out var loceniZapisi) && loceniZapisi.Count > 0;
 
-            // Pogodbe iz cache
-            cache.Pogodbe.TryGetValue(partner, out var pogodbe);
-            pogodbe ??= new();
-
-            // Rok plačila: če ima partner veljavno pogodbo (tudi v prihodnosti), vzemi najdaljši rok iz pogodb
-            var rokPlacila = rokPlacilaPartner;
-            var pogodbeZRokom = pogodbe.Where(p => (p.RokPlacila ?? 0) > 0).ToList();
-            if (pogodbeZRokom.Count > 0)
+            if (jeLocen)
             {
-                var maxRokPogodba = pogodbeZRokom.Max(p => p.RokPlacila!.Value);
-                rokPlacila = maxRokPogodba;
+                // Preveri ali so vsi računi že zapisani
+                if (cache.OsnutekRacuni.TryGetValue(partner, out var obstojeciRacuni) && obstojeciRacuni.Count > 0)
+                {
+                    if (obstojeciRacuni.All(r => r.RacunStevilka != null && r.RacunLeto != null))
+                    {
+                        var racuniStr = string.Join(", ", obstojeciRacuni.Select(r => $"{r.RacunStevilka}/{r.RacunLeto}"));
+                        rezultat.Uspeh = true;
+                        rezultat.RacunStevilka = obstojeciRacuni.First().RacunStevilka;
+                        rezultat.RacunLeto = obstojeciRacuni.First().RacunLeto;
+                        rezultat.Sporocilo = $"Ločeni računi že zapisani: {racuniStr}";
+                        return rezultat;
+                    }
+                }
+
+                return await ZapisiLoceneRacune(httpClient, apiUrl, token, mesec, leto, partner,
+                    datumRacuna, komercialist, cache, db, osnutek, postavke, loceniZapisi!, log, sw);
             }
+            else
+            {
+                // Navadna logika: en račun
+                if (osnutek.RacunStevilka != null && osnutek.RacunLeto != null)
+                {
+                    rezultat.Uspeh = true;
+                    rezultat.RacunStevilka = osnutek.RacunStevilka;
+                    rezultat.RacunLeto = osnutek.RacunLeto;
+                    rezultat.Sporocilo = $"Račun že zapisan: {osnutek.RacunStevilka}/{osnutek.RacunLeto}";
+                    return rezultat;
+                }
+
+                return await ZapisiNavadniRacun(httpClient, apiUrl, token, mesec, leto, partner,
+                    datumRacuna, komercialist, cache, db, osnutek, postavke, log, sw);
+            }
+        }
+        catch (Exception ex)
+        {
+            rezultat.Sporocilo = $"Napaka: {ex.Message}";
+            return rezultat;
+        }
+    }
+
+    private async Task<FawRacunRezultat> ZapisiNavadniRacun(
+        HttpClient httpClient, string apiUrl, string token,
+        int mesec, int leto, int partner,
+        DateTime datumRacuna, string komercialist,
+        FawCache cache, ObracunLinqDb db,
+        ObracunOsnutek osnutek, List<ObracunOsnutekPos> postavke,
+        Action<string>? log, System.Diagnostics.Stopwatch sw)
+    {
+        var rezultat = new FawRacunRezultat { Partner = partner };
+
+        cache.Partnerji.TryGetValue(partner, out var partnerData);
+        var rokPlacilaPartner = (partnerData?.RokPlacila ?? 0) > 0 ? partnerData!.RokPlacila!.Value : 8;
+        var datumStoritveOd = new DateTime(leto, mesec, 1);
+        var jeLetnaPogodba = osnutek.LetnaPogodba == 1;
+        var datumStoritveDo = jeLetnaPogodba
+            ? datumStoritveOd.AddYears(1).AddDays(-1)
+            : datumStoritveOd.AddMonths(1).AddDays(-1);
+
+        // Pogodbe iz cache
+        cache.Pogodbe.TryGetValue(partner, out var pogodbe);
+        pogodbe ??= new();
+
+        // Rok plačila: če ima partner veljavno pogodbo, vzemi najdaljši rok iz pogodb
+        var rokPlacila = rokPlacilaPartner;
+        var pogodbeZRokom = pogodbe.Where(p => (p.RokPlacila ?? 0) > 0).ToList();
+        if (pogodbeZRokom.Count > 0)
+        {
+            var maxRokPogodba = pogodbeZRokom.Max(p => p.RokPlacila!.Value);
+            rokPlacila = maxRokPogodba;
+        }
+        var datumValute = datumRacuna.AddDays(rokPlacila);
+
+        // Sestavi besedilo
+        var vrstice = new List<string>();
+        var mesecStr = mesec.ToString("D2");
+        var pogodbeZaMesec = FiltrirajPogodbeZaMesec(pogodbe, mesecStr, cache);
+        if (pogodbeZaMesec.Count > 0)
+        {
+            var stevilke = pogodbeZaMesec.Select(p =>
+                !string.IsNullOrWhiteSpace(p.StPogodbe) ? p.StPogodbe.Trim() : $"{p.Stevilka}/{p.Leto}").ToList();
+            var prefix = pogodbeZaMesec.Count switch
+            {
+                1 => "Številka pogodbe",
+                2 => "Številki pogodb",
+                _ => "Številke pogodb"
+            };
+            vrstice.Add($"{prefix}: {string.Join(", ", stevilke)}");
+        }
+
+        // Nalogi iz cache
+        cache.NalogiPoPartnerju.TryGetValue(partner, out var stevilkeNalogov);
+        stevilkeNalogov ??= new();
+        if (stevilkeNalogov.Count > 0)
+            vrstice.Add(SestaviBesediloNalogov(stevilkeNalogov, cache));
+
+        var besedilo = string.Join("\r\n", vrstice);
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Pripravljam JSON");
+        var sifraKilometrina = _parametri.GetString(ObracunParam.SifraKilometrina) ?? "";
+        var apiPostavke = SestaviApiPostavke(postavke, sifraKilometrina);
+
+        var fakturaData = new
+        {
+            dodatnaPolja = new[]
+            {
+                new { naziv = "BESEDILO", vrednost = besedilo }
+            },
+            datum = datumRacuna.ToString("yyyy-MM-dd"),
+            datumValute = datumValute.ToString("yyyy-MM-dd"),
+            partner = partner,
+            komercialist = komercialist,
+            datumStoritveOd = datumStoritveOd.ToString("yyyy-MM-dd"),
+            datumStoritveDo = datumStoritveDo.ToString("yyyy-MM-dd"),
+            postavke = apiPostavke
+        };
+
+        var (uspeh, racunStevilka, racunLeto, sporocilo) = await PosljiNaApi(httpClient, apiUrl, token, fakturaData, log, sw);
+        if (!uspeh)
+        {
+            rezultat.Sporocilo = sporocilo;
+            return rezultat;
+        }
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Posodabljam osnutek v bazi");
+        db.ObracunOsnutek
+            .Where(o => o.Mesec == mesec && o.Leto == leto && o.Partner == partner)
+            .Set(o => o.RacunStevilka, racunStevilka)
+            .Set(o => o.RacunLeto, racunLeto)
+            .Update();
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Končano");
+
+        rezultat.Uspeh = true;
+        rezultat.RacunStevilka = racunStevilka;
+        rezultat.RacunLeto = racunLeto;
+        rezultat.Sporocilo = racunStevilka != null
+            ? $"Račun uspešno zapisan: {racunStevilka}/{racunLeto}"
+            : "Račun uspešno poslan, ni vrnil številke.";
+
+        return rezultat;
+    }
+
+    private async Task<FawRacunRezultat> ZapisiLoceneRacune(
+        HttpClient httpClient, string apiUrl, string token,
+        int mesec, int leto, int partner,
+        DateTime datumRacuna, string komercialist,
+        FawCache cache, ObracunLinqDb db,
+        ObracunOsnutek osnutek, List<ObracunOsnutekPos> postavke,
+        List<ObracunLoceniRacun> loceniZapisi,
+        Action<string>? log, System.Diagnostics.Stopwatch sw)
+    {
+        var rezultat = new FawRacunRezultat { Partner = partner };
+        var sifraKilometrina = _parametri.GetString(ObracunParam.SifraKilometrina) ?? "";
+
+        cache.Partnerji.TryGetValue(partner, out var partnerData);
+        var rokPlacilaPartner = (partnerData?.RokPlacila ?? 0) > 0 ? partnerData!.RokPlacila!.Value : 8;
+        var datumStoritveOd = new DateTime(leto, mesec, 1);
+        var jeLetnaPogodba = osnutek.LetnaPogodba == 1;
+        var datumStoritveDo = jeLetnaPogodba
+            ? datumStoritveOd.AddYears(1).AddDays(-1)
+            : datumStoritveOd.AddMonths(1).AddDays(-1);
+
+        cache.Pogodbe.TryGetValue(partner, out var pogodbe);
+        pogodbe ??= new();
+
+        // Pogodba → prodajalna mapping
+        var pogodbaProdajalna = loceniZapisi.ToDictionary(
+            lr => (lr.PogodbaStevilka, lr.PogodbaLeto), lr => lr.Prodajalna);
+
+        // Prodajalna → pogodba mapping (za razporeditev po prodajalni)
+        var prodajalnaPogodba = loceniZapisi.ToDictionary(
+            lr => lr.Prodajalna, lr => (lr.PogodbaStevilka, lr.PogodbaLeto));
+
+        var prodajalne = loceniZapisi.Select(lr => lr.Prodajalna).Distinct().ToList();
+
+        // Nalogi iz cache
+        cache.NalogiPoPartnerju.TryGetValue(partner, out var stevilkeNalogov);
+        stevilkeNalogov ??= new();
+
+        // Razdeli postavke po pogodbah/prodajalnah
+        var postavkeZaPogodbo = new Dictionary<(int Stevilka, int Leto), List<ObracunOsnutekPos>>();
+        foreach (var lr in loceniZapisi)
+            postavkeZaPogodbo[(lr.PogodbaStevilka, lr.PogodbaLeto)] = new();
+
+        // Izračunaj znesek vsake pogodbe (za proporcionalno razdelitev)
+        var zneskiPogodb = new Dictionary<(int Stevilka, int Leto), decimal>();
+        foreach (var p in postavke.Where(p => p.TipPostavke == TipPostavke.POGODBA && p.PogodbaStevilka.HasValue && p.PogodbaLeto.HasValue))
+        {
+            var key = (p.PogodbaStevilka!.Value, p.PogodbaLeto!.Value);
+            if (!zneskiPogodb.ContainsKey(key))
+                zneskiPogodb[key] = 0;
+            zneskiPogodb[key] += (p.Kolicina ?? 0) * (p.Cena ?? 0) * (1 - (p.Rabat ?? 0) / 100);
+        }
+
+        var skupniZnesek = zneskiPogodb.Values.Sum();
+
+        foreach (var pos in postavke)
+        {
+            if (pos.TipPostavke == TipPostavke.POGODBA && pos.PogodbaStevilka.HasValue && pos.PogodbaLeto.HasValue)
+            {
+                // POGODBA → na svojo pogodbo
+                var key = (pos.PogodbaStevilka.Value, pos.PogodbaLeto.Value);
+                if (postavkeZaPogodbo.ContainsKey(key))
+                    postavkeZaPogodbo[key].Add(pos);
+                else
+                    postavkeZaPogodbo.Values.First().Add(pos); // fallback
+            }
+            else if (!string.IsNullOrWhiteSpace(pos.NalogStevilka) && pos.NalogLeto.HasValue)
+            {
+                // NALOG ali ROCNI z NalogStevilka → na prodajalno naloga
+                var nalogKey = (pos.NalogStevilka, pos.NalogLeto.Value);
+                if (cache.NalogiEntity.TryGetValue(nalogKey, out var nalog) && prodajalnaPogodba.TryGetValue(nalog.Prodajalna, out var pog))
+                {
+                    postavkeZaPogodbo[pog].Add(pos);
+                }
+                else
+                {
+                    // Prodajalna naloga ni med ločenimi → daj na prvo pogodbo
+                    postavkeZaPogodbo.Values.First().Add(pos);
+                }
+            }
+            else
+            {
+                // Servisne storitve (NALOG brez NalogStevilka) → proporcionalno ali na edino prodajalno
+                if (prodajalne.Count == 1)
+                {
+                    postavkeZaPogodbo.Values.First().Add(pos);
+                }
+                else if (skupniZnesek > 0)
+                {
+                    // Proporcionalno po znesku pogodb
+                    var originalKolicina = pos.Kolicina ?? 0;
+                    bool first = true;
+                    decimal dodeljeno = 0;
+                    foreach (var kvp in postavkeZaPogodbo)
+                    {
+                        zneskiPogodb.TryGetValue(kvp.Key, out var znesekPogodbe);
+                        var delez = znesekPogodbe / skupniZnesek;
+                        var kolicinaDel = Math.Round(originalKolicina * delez, 2);
+
+                        if (first)
+                        {
+                            // Na zadnjo damo ostanek
+                            first = false;
+                            continue;
+                        }
+
+                        dodeljeno += kolicinaDel;
+                        kvp.Value.Add(new ObracunOsnutekPos
+                        {
+                            Mesec = pos.Mesec, Leto = pos.Leto, Partner = pos.Partner, Zs = pos.Zs,
+                            Artikel = pos.Artikel, Naziv = pos.Naziv, Kolicina = kolicinaDel,
+                            Cena = pos.Cena, Rabat = pos.Rabat, TipPostavke = pos.TipPostavke,
+                            NalogStevilka = pos.NalogStevilka, NalogLeto = pos.NalogLeto
+                        });
+                    }
+                    // Prva pogodba dobi ostanek
+                    var ostanek = originalKolicina - dodeljeno;
+                    if (ostanek != 0)
+                    {
+                        var prvaKey = postavkeZaPogodbo.Keys.First();
+                        postavkeZaPogodbo[prvaKey].Add(new ObracunOsnutekPos
+                        {
+                            Mesec = pos.Mesec, Leto = pos.Leto, Partner = pos.Partner, Zs = pos.Zs,
+                            Artikel = pos.Artikel, Naziv = pos.Naziv, Kolicina = ostanek,
+                            Cena = pos.Cena, Rabat = pos.Rabat, TipPostavke = pos.TipPostavke,
+                            NalogStevilka = pos.NalogStevilka, NalogLeto = pos.NalogLeto
+                        });
+                    }
+                }
+                else
+                {
+                    // Ni znanih zneskov pogodb → na prvo
+                    postavkeZaPogodbo.Values.First().Add(pos);
+                }
+            }
+        }
+
+        // Obstoječi racuni (za preskakovanje že zapisanih)
+        cache.OsnutekRacuni.TryGetValue(partner, out var obstojeciRacuni);
+        obstojeciRacuni ??= new();
+        var zeZapisani = obstojeciRacuni
+            .Where(r => r.RacunStevilka != null && r.RacunLeto != null)
+            .Select(r => (r.PogodbaStevilka, r.PogodbaLeto))
+            .ToHashSet();
+
+        // Zapiši račun za vsako pogodbo/prodajalno
+        var mesecStr = mesec.ToString("D2");
+        var stRacunov = postavkeZaPogodbo.Count;
+        int zap = 0;
+        var zapisaniRacuni = new List<string>();
+
+        foreach (var (pogodbaKey, pogodbaPostavke) in postavkeZaPogodbo)
+        {
+            zap++;
+
+            // Preskoči že zapisane
+            if (zeZapisani.Contains(pogodbaKey))
+            {
+                var obs = obstojeciRacuni.First(r => r.PogodbaStevilka == pogodbaKey.Stevilka && r.PogodbaLeto == pogodbaKey.Leto);
+                zapisaniRacuni.Add($"{obs.RacunStevilka}/{obs.RacunLeto}");
+                log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Račun {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}) že zapisan: {obs.RacunStevilka}/{obs.RacunLeto}");
+                continue;
+            }
+
+            if (pogodbaPostavke.Count == 0)
+            {
+                log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Račun {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}) nima postavk, preskočeno");
+                continue;
+            }
+
+            // Pogodba za ta račun
+            var pogodba = pogodbe.FirstOrDefault(p => p.Stevilka == pogodbaKey.Stevilka && p.Leto == pogodbaKey.Leto);
+            pogodbaProdajalna.TryGetValue(pogodbaKey, out var prodajalna);
+
+            // Rok plačila iz pogodbe (fallback na partner)
+            var rokPlacila = (pogodba?.RokPlacila ?? 0) > 0 ? pogodba!.RokPlacila!.Value : rokPlacilaPartner;
             var datumValute = datumRacuna.AddDays(rokPlacila);
 
-            // Sestavi besedilo
+            // Besedilo: samo ta pogodba
             var vrstice = new List<string>();
-            var mesecStr = mesec.ToString("D2");
-            var pogodbeZaMesec = pogodbe.Where(p =>
+            if (pogodba != null)
             {
-                cache.PostavkePogodb.TryGetValue((p.Stevilka, p.Leto), out var pozicije);
-                if (pozicije == null || pozicije.Count == 0) return true;
-                return pozicije.Any(pz =>
-                    string.IsNullOrWhiteSpace(pz.Meseci) ||
-                    pz.Meseci.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(m => m.Trim()).Contains(mesecStr));
+                var stPogodbe = !string.IsNullOrWhiteSpace(pogodba.StPogodbe) ? pogodba.StPogodbe.Trim() : $"{pogodba.Stevilka}/{pogodba.Leto}";
+                vrstice.Add($"Številka pogodbe: {stPogodbe}");
+            }
+
+            // Nalogi ki spadajo na to prodajalno
+            var nalogiZaToProdajalno = stevilkeNalogov.Where(n =>
+            {
+                if (cache.NalogiEntity.TryGetValue((n.StevilkaNaloga, n.LetoNaloga), out var nalog))
+                    return nalog.Prodajalna == prodajalna;
+                return false;
             }).ToList();
-            if (pogodbeZaMesec.Count > 0)
-            {
-                var stevilke = pogodbeZaMesec.Select(p =>
-                    !string.IsNullOrWhiteSpace(p.StPogodbe) ? p.StPogodbe.Trim() : $"{p.Stevilka}/{p.Leto}").ToList();
-                var prefix = pogodbeZaMesec.Count switch
-                {
-                    1 => "Številka pogodbe",
-                    2 => "Številki pogodb",
-                    _ => "Številke pogodb"
-                };
-                vrstice.Add($"{prefix}: {string.Join(", ", stevilke)}");
-            }
 
-            // Nalogi iz cache
-            cache.NalogiPoPartnerju.TryGetValue(partner, out var stevilkeNalogov);
-            stevilkeNalogov ??= new();
-
-            if (stevilkeNalogov.Count > 0)
-            {
-                var nalogiSortirani = stevilkeNalogov
-                    .OrderBy(n => cache.DatumiNalogov.TryGetValue((n.StevilkaNaloga, n.LetoNaloga), out var d) ? d : DateTime.MaxValue)
-                    .ThenBy(n => n.StevilkaNaloga)
-                    .ToList();
-
-                var prefix = nalogiSortirani.Count switch
-                {
-                    1 => "Delovni nalog",
-                    2 => "Delovna naloga",
-                    _ => "Delovni nalogi"
-                };
-
-                var nalogItems = nalogiSortirani.Select(n =>
-                {
-                    var datumStr = cache.DatumiNalogov.TryGetValue((n.StevilkaNaloga, n.LetoNaloga), out var d) ? d.ToString("dd.MM.yyyy") : "?";
-                    return $"{n.StevilkaNaloga} z dne {datumStr}";
-                }).ToList();
-
-                // Po 3 naloge v vrstico, z zamikom za nadaljevanje
-                var padLen = prefix.Length + 2;
-                var pad = new string(' ', padLen + 8);
-                var sb = new System.Text.StringBuilder();
-                sb.Append($"{prefix}: ");
-                for (int i = 0; i < nalogItems.Count; i++)
-                {
-                    if (i > 0 && i % 3 == 0)
-                    {
-                        sb.Append("\r\n");
-                        sb.Append(pad);
-                    }
-                    else if (i > 0)
-                    {
-                        sb.Append(", ");
-                    }
-                    sb.Append(nalogItems[i]);
-                }
-                vrstice.Add(sb.ToString());
-            }
+            if (nalogiZaToProdajalno.Count > 0)
+                vrstice.Add(SestaviBesediloNalogov(nalogiZaToProdajalno, cache));
 
             var besedilo = string.Join("\r\n", vrstice);
 
-            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Pripravljam JSON");
-            var sifraKilometrina = _parametri.GetString(ObracunParam.SifraKilometrina) ?? "";
-            var apiPostavke = postavke.Select(p => new
-            {
-                sifra = p.Artikel ?? "",
-                naziv = p.Artikel == "-" || p.Artikel == sifraKilometrina ? (p.Naziv ?? "") : (string?)null,
-                kolicina = p.Kolicina ?? 0,
-                prodajnaCena = p.Cena ?? 0,
-                rabat1 = p.Rabat ?? 0,
-                stopnjaDdv = 0
-            }).ToArray();
+            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Ločen račun {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}, prodajalna {prodajalna}): {pogodbaPostavke.Count} postavk");
+
+            var apiPostavke = SestaviApiPostavke(pogodbaPostavke, sifraKilometrina);
 
             var fakturaData = new
             {
@@ -379,70 +679,187 @@ public class FawService
                 komercialist = komercialist,
                 datumStoritveOd = datumStoritveOd.ToString("yyyy-MM-dd"),
                 datumStoritveDo = datumStoritveDo.ToString("yyyy-MM-dd"),
+                prodajalna = prodajalna,
                 postavke = apiPostavke
             };
 
-            var fakturaJson = JsonSerializer.Serialize(fakturaData, new JsonSerializerOptions { WriteIndented = true });
-
-            var baseUrl = apiUrl.TrimEnd('/');
-            if (baseUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
-                baseUrl = baseUrl[..^"/Avtentikacija".Length];
-
-            var fakturaUrl = baseUrl.Contains("/api/v1", StringComparison.OrdinalIgnoreCase)
-                ? $"{baseUrl}/FA/racun"
-                : $"{baseUrl}/api/v1/FA/racun";
-
-            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] POST {fakturaUrl} PAYLOAD: {fakturaJson}");
-
-            var fakturaContent = new StringContent(fakturaJson, Encoding.UTF8, "application/json");
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-
-            var fakturaResponse = await httpClient.PostAsync(fakturaUrl, fakturaContent);
-            var fakturaResponseContent = await fakturaResponse.Content.ReadAsStringAsync();
-
-            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] RESPONSE ({(int)fakturaResponse.StatusCode}): {fakturaResponseContent}");
-
-            if (!fakturaResponse.IsSuccessStatusCode)
+            var (uspeh, racunStevilka, racunLeto, sporocilo) = await PosljiNaApi(httpClient, apiUrl, token, fakturaData, log, sw);
+            if (!uspeh)
             {
-                rezultat.Sporocilo = $"Napaka API ({(int)fakturaResponse.StatusCode}): {fakturaResponseContent}";
+                rezultat.Sporocilo = $"Napaka pri ločenem računu {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}): {sporocilo}";
                 return rezultat;
             }
 
-            int? racunStevilka = null;
-            int? racunLeto = null;
-            try
+            // Zapiši v OBRACUN_OSNUTEK_RACUN
+            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Zapisujem v OBRACUN_OSNUTEK_RACUN");
+            var obstaja = obstojeciRacuni.FirstOrDefault(r => r.PogodbaStevilka == pogodbaKey.Stevilka && r.PogodbaLeto == pogodbaKey.Leto);
+            if (obstaja != null)
             {
-                var responseDoc = JsonDocument.Parse(fakturaResponseContent);
-                if (responseDoc.RootElement.TryGetProperty("stevilka", out var stEl))
-                    racunStevilka = stEl.GetInt32();
-                if (responseDoc.RootElement.TryGetProperty("leto", out var ltEl))
-                    racunLeto = ltEl.GetInt32();
+                db.ObracunOsnutekRacun
+                    .Where(r => r.Mesec == mesec && r.Leto == leto && r.Partner == partner
+                        && r.PogodbaStevilka == pogodbaKey.Stevilka && r.PogodbaLeto == pogodbaKey.Leto)
+                    .Set(r => r.RacunStevilka, racunStevilka)
+                    .Set(r => r.RacunLeto, racunLeto)
+                    .Update();
             }
-            catch { }
+            else
+            {
+                db.Insert(new ObracunOsnutekRacun
+                {
+                    Mesec = mesec,
+                    Leto = leto,
+                    Partner = partner,
+                    PogodbaStevilka = pogodbaKey.Stevilka,
+                    PogodbaLeto = pogodbaKey.Leto,
+                    Prodajalna = prodajalna,
+                    RacunStevilka = racunStevilka,
+                    RacunLeto = racunLeto
+                });
+            }
 
-            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Posodabljam osnutek v bazi");
+            zapisaniRacuni.Add($"{racunStevilka}/{racunLeto}");
+        }
+
+        // Ko so vsi zapisani, označi partnerja v osnutku
+        var prviRacun = zapisaniRacuni.FirstOrDefault();
+        if (zapisaniRacuni.Count > 0)
+        {
+            // Razberi prvega za shranitev v osnutek
+            var parts = prviRacun?.Split('/');
+            int? prviSt = null, prvoLeto = null;
+            if (parts?.Length == 2)
+            {
+                int.TryParse(parts[0], out var s);
+                int.TryParse(parts[1], out var l);
+                prviSt = s;
+                prvoLeto = l;
+            }
+
             db.ObracunOsnutek
                 .Where(o => o.Mesec == mesec && o.Leto == leto && o.Partner == partner)
-                .Set(o => o.RacunStevilka, racunStevilka)
-                .Set(o => o.RacunLeto, racunLeto)
+                .Set(o => o.RacunStevilka, prviSt)
+                .Set(o => o.RacunLeto, prvoLeto)
                 .Update();
 
-            log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Končano");
-
             rezultat.Uspeh = true;
-            rezultat.RacunStevilka = racunStevilka;
-            rezultat.RacunLeto = racunLeto;
-            rezultat.Sporocilo = racunStevilka != null
-                ? $"Račun uspešno zapisan: {racunStevilka}/{racunLeto}"
-                : "Račun uspešno poslan, ni vrnil številke.";
-
-            return rezultat;
+            rezultat.RacunStevilka = prviSt;
+            rezultat.RacunLeto = prvoLeto;
+            rezultat.Sporocilo = $"Ločeni računi ({zapisaniRacuni.Count}): {string.Join(", ", zapisaniRacuni)}";
         }
-        catch (Exception ex)
+        else
         {
-            rezultat.Sporocilo = $"Napaka: {ex.Message}";
-            return rezultat;
+            rezultat.Sporocilo = "Ni bilo postavk za zapis ločenih računov.";
         }
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] Končano ({zapisaniRacuni.Count} ločenih računov)");
+        return rezultat;
+    }
+
+    private static List<FaPogodbe> FiltrirajPogodbeZaMesec(List<FaPogodbe> pogodbe, string mesecStr, FawCache cache)
+    {
+        return pogodbe.Where(p =>
+        {
+            cache.PostavkePogodb.TryGetValue((p.Stevilka, p.Leto), out var pozicije);
+            if (pozicije == null || pozicije.Count == 0) return true;
+            return pozicije.Any(pz =>
+                string.IsNullOrWhiteSpace(pz.Meseci) ||
+                pz.Meseci.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(m => m.Trim()).Contains(mesecStr));
+        }).ToList();
+    }
+
+    private static string SestaviBesediloNalogov(List<(string StevilkaNaloga, int LetoNaloga)> nalogi, FawCache cache)
+    {
+        var nalogiSortirani = nalogi
+            .OrderBy(n => cache.DatumiNalogov.TryGetValue((n.StevilkaNaloga, n.LetoNaloga), out var d) ? d : DateTime.MaxValue)
+            .ThenBy(n => n.StevilkaNaloga)
+            .ToList();
+
+        var prefix = nalogiSortirani.Count switch
+        {
+            1 => "Delovni nalog",
+            2 => "Delovna naloga",
+            _ => "Delovni nalogi"
+        };
+
+        var nalogItems = nalogiSortirani.Select(n =>
+        {
+            var datumStr = cache.DatumiNalogov.TryGetValue((n.StevilkaNaloga, n.LetoNaloga), out var d) ? d.ToString("dd.MM.yyyy") : "?";
+            return $"{n.StevilkaNaloga} z dne {datumStr}";
+        }).ToList();
+
+        var padLen = prefix.Length + 2;
+        var pad = new string(' ', padLen + 8);
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"{prefix}: ");
+        for (int i = 0; i < nalogItems.Count; i++)
+        {
+            if (i > 0 && i % 3 == 0)
+            {
+                sb.Append("\r\n");
+                sb.Append(pad);
+            }
+            else if (i > 0)
+            {
+                sb.Append(", ");
+            }
+            sb.Append(nalogItems[i]);
+        }
+        return sb.ToString();
+    }
+
+    private static object[] SestaviApiPostavke(List<ObracunOsnutekPos> postavke, string sifraKilometrina)
+    {
+        return postavke.Select(p => new
+        {
+            sifra = p.Artikel ?? "",
+            naziv = p.Artikel == "-" || p.Artikel == sifraKilometrina ? (p.Naziv ?? "") : (string?)null,
+            kolicina = p.Kolicina ?? 0,
+            prodajnaCena = p.Cena ?? 0,
+            rabat1 = p.Rabat ?? 0,
+            stopnjaDdv = 0
+        }).ToArray();
+    }
+
+    private async Task<(bool Uspeh, int? RacunStevilka, int? RacunLeto, string Sporocilo)> PosljiNaApi(
+        HttpClient httpClient, string apiUrl, string token, object fakturaData,
+        Action<string>? log, System.Diagnostics.Stopwatch sw)
+    {
+        var fakturaJson = JsonSerializer.Serialize(fakturaData, new JsonSerializerOptions { WriteIndented = true });
+
+        var baseUrl = apiUrl.TrimEnd('/');
+        if (baseUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
+            baseUrl = baseUrl[..^"/Avtentikacija".Length];
+
+        var fakturaUrl = baseUrl.Contains("/api/v1", StringComparison.OrdinalIgnoreCase)
+            ? $"{baseUrl}/FA/racun"
+            : $"{baseUrl}/api/v1/FA/racun";
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] POST {fakturaUrl} PAYLOAD: {fakturaJson}");
+
+        var fakturaContent = new StringContent(fakturaJson, Encoding.UTF8, "application/json");
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        var fakturaResponse = await httpClient.PostAsync(fakturaUrl, fakturaContent);
+        var fakturaResponseContent = await fakturaResponse.Content.ReadAsStringAsync();
+
+        log?.Invoke($"[{sw.ElapsedMilliseconds}ms] RESPONSE ({(int)fakturaResponse.StatusCode}): {fakturaResponseContent}");
+
+        if (!fakturaResponse.IsSuccessStatusCode)
+            return (false, null, null, $"Napaka API ({(int)fakturaResponse.StatusCode}): {fakturaResponseContent}");
+
+        int? racunStevilka = null;
+        int? racunLeto = null;
+        try
+        {
+            var responseDoc = JsonDocument.Parse(fakturaResponseContent);
+            if (responseDoc.RootElement.TryGetProperty("stevilka", out var stEl))
+                racunStevilka = stEl.GetInt32();
+            if (responseDoc.RootElement.TryGetProperty("leto", out var ltEl))
+                racunLeto = ltEl.GetInt32();
+        }
+        catch { }
+
+        return (true, racunStevilka, racunLeto, "OK");
     }
 
     public List<(string Sifra, string Naziv)> NaloziKomercialiste()
