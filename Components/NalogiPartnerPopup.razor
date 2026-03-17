@@ -4,12 +4,12 @@
 
 <DxPopup @bind-Visible="@visibleInternal"
          HeaderText="@headerText"
-         Width="100vw"
-         Height="100vh"
+         Width="95vw"
+         Height="90vh"
          ShowFooter="true"
          CloseOnEscape="true">
     <BodyContentTemplate>
-        <div style="display: flex; flex-direction: column; height: calc(100vh - 120px);">
+        <div style="display: flex; flex-direction: column; height: calc(90vh - 120px);">
             @if (isLoading)
             {
                 <p>Nalagam naloge...</p>
@@ -32,7 +32,7 @@
                             style="height: 100%;">
                         <Columns>
                             <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Stevilka)" Caption="Številka" Width="90px" />
-                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Serviser)" Caption="Serviser" Width="140px" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Serviser)" Caption="Serviser" />
                             <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" SortIndex="0" SortOrder="GridColumnSortOrder.Descending" />
                             <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.ZacetekUra)" Caption="Začetek" DisplayFormat="HH:mm" Width="65px" />
                             <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.KonecUra)" Caption="Konec" DisplayFormat="HH:mm" Width="65px" />
