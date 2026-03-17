@@ -1085,10 +1085,8 @@ public class ObracunService
     /// Pridobi naloge za stran Potrjevanje nalogov.
     /// Filter: DATUM >= 1. dan meseca iz parametrov.
     /// </summary>
-    public async Task<List<PotrjevanjeNalogDto>> GetNalogiZaPotrjevanjeAsync(int leto, int mesec)
+    public async Task<List<PotrjevanjeNalogDto>> GetNalogiZaPotrjevanjeAsync(DateTime datumOd, DateTime datumDo)
     {
-        var datumOd = new DateTime(leto, mesec, 1);
-
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();
 
@@ -1102,10 +1100,11 @@ public class ObracunService
                    n.NAZIV16, n.NAZIV17, n.NAZIV18, n.NAZIV19, n.NAZIV20,
                    n.SIF29, n.PRODAJALNA, n.SIF30
             FROM FA_DN_NALOG n
-            WHERE n.ZACETEK_DATUM >= @DatumOd
+            WHERE n.ZACETEK_DATUM >= @DatumOd AND n.ZACETEK_DATUM <= @DatumDo
             ORDER BY n.PARTNER, n.ZACETEK_DATUM", connection))
         {
             cmd.Parameters.AddWithValue("@DatumOd", datumOd);
+            cmd.Parameters.AddWithValue("@DatumDo", datumDo);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {

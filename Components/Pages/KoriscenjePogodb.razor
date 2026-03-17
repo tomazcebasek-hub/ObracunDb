@@ -1,0 +1,168 @@
+@page "/koriscenje-pogodb"
+@rendermode InteractiveServer
+@using FirebirdSql.Data.FirebirdClient
+@using ObracunDb.Data.DTOs
+@inject ObracunDb.Data.FirebirdConnectionManager ConnectionManager
+@inject ObracunDb.Services.AuthService AuthService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Koriščenje pogodb</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+
+    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <h5 style="margin: 0;">Koriščenje pogodb</h5>
+        @if (isLoading)
+        {
+            <span class="text-muted">Nalagam...</span>
+        }
+    </div>
+
+    @if (partnerji.Count > 0)
+    {
+        <div style="flex: 1; overflow: hidden; min-height: 0;">
+            <DxGrid Data="@partnerji"
+                    KeyFieldName="@nameof(KoriscenjePogodbDto.Partner)"
+                    ShowFilterRow="true"
+                    CssClass="w-100"
+                    PageSize="0"
+                    VirtualScrollingEnabled="true"
+                    style="height: 100%">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.Partner)" Caption="Šifra" Width="80px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.NazivPartnerja)" Caption="Partner" MinWidth="140" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.SteviloPogodb)" Caption="Št. pogodb" Width="100px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.VsotaMinut)" Caption="Min/mesec" Width="100px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.SkupajRazpolozljivih)" Caption="Razpoložljivo" Width="110px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.KoriscenoMinut)" Caption="Koriščeno" Width="100px" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.ProcentKoriscenja)" Caption="%" Width="80px" DisplayFormat="N1" />
+                </Columns>
+                <TotalSummary>
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(KoriscenjePogodbDto.Partner)" DisplayText="Partnerjev: {0}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.SteviloPogodb)" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.VsotaMinut)" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.SkupajRazpolozljivih)" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.KoriscenoMinut)" />
+                </TotalSummary>
+            </DxGrid>
+        </div>
+    }
+</div>
+
+@code {
+    bool isLoading;
+    List<KoriscenjePogodbDto> partnerji = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await NaloziPodatke();
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+        partnerji.Clear();
+
+        try
+        {
+            await using var connection = ConnectionManager.GetConnection();
+            await connection.OpenAsync();
+
+            var today = DateTime.Today;
+
+            // 1. Naloži veljavne ali prihodnje pogodbe (za štetje pogodb in mesečne minute)
+            var contracts = new List<(int Partner, int StMinut)>();
+
+            await using (var cmd = new FbCommand(@"
+                SELECT PARTNER, COALESCE(ST_MINUT, 0)
+                FROM FA_POGODBE
+                WHERE VELJA_DO IS NULL OR VELJA_DO >= @Today
+                   OR PRVI_RACUN_OD > @Today", connection))
+            {
+                cmd.Parameters.AddWithValue("@Today", today);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    contracts.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+
+            if (contracts.Count == 0) return;
+
+            // 2. Združi po partnerju (število pogodb, mesečne minute)
+            var partnerPogodbe = new Dictionary<int, (int Count, int MonthlyMinutes)>();
+            foreach (var c in contracts)
+            {
+                if (partnerPogodbe.TryGetValue(c.Partner, out var existing))
+                    partnerPogodbe[c.Partner] = (existing.Count + 1, existing.MonthlyMinutes + c.StMinut);
+                else
+                    partnerPogodbe[c.Partner] = (1, c.StMinut);
+            }
+
+            var partnerIn = string.Join(",", partnerPogodbe.Keys);
+
+            // 3. Razpoložljive minute iz OBRACUN_OSNUTEK (PLUS_MINUTE_POGODBA sešteto po mesecih)
+            var razpolozljive = new Dictionary<int, int>();
+            await using (var cmd = new FbCommand($@"
+                SELECT PARTNER, SUM(PLUS_MINUTE_POGODBA)
+                FROM OBRACUN_OSNUTEK
+                WHERE PARTNER IN ({partnerIn})
+                GROUP BY PARTNER", connection))
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    if (!reader.IsDBNull(1))
+                        razpolozljive[reader.GetInt32(0)] = reader.GetInt32(1);
+                }
+            }
+
+            // 4. Koriščene minute iz OBRACUN_OSNUTEK_NALOG_OBRACUN
+            var usedMinutes = new Dictionary<int, int>();
+            await using (var cmd = new FbCommand($@"
+                SELECT PARTNER, SUM(COALESCE(MINUTE_ODSTETE_POGODBA, 0))
+                FROM OBRACUN_OSNUTEK_NALOG_OBRACUN
+                WHERE PARTNER IN ({partnerIn})
+                GROUP BY PARTNER", connection))
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    if (!reader.IsDBNull(1))
+                        usedMinutes[reader.GetInt32(0)] = reader.GetInt32(1);
+                }
+            }
+
+            // 5. Nazivi partnerjev
+            var nazivi = new Dictionary<int, string?>();
+            await using (var cmd = new FbCommand($"SELECT SIFRA, NAZIV FROM PARTNER WHERE SIFRA IN ({partnerIn})", connection))
+            {
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    nazivi[reader.GetInt32(0)] = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+            }
+
+            // 6. Sestavi rezultat
+            foreach (var kv in partnerPogodbe.OrderBy(kv => nazivi.GetValueOrDefault(kv.Key) ?? "").ThenBy(kv => kv.Key))
+            {
+                var korisceno = usedMinutes.GetValueOrDefault(kv.Key);
+                var razpol = razpolozljive.GetValueOrDefault(kv.Key);
+                partnerji.Add(new KoriscenjePogodbDto
+                {
+                    Partner = kv.Key,
+                    NazivPartnerja = nazivi.GetValueOrDefault(kv.Key),
+                    SteviloPogodb = kv.Value.Count,
+                    VsotaMinut = kv.Value.MonthlyMinutes,
+                    KoriscenoMinut = korisceno,
+                    SkupajRazpolozljivih = razpol
+                });
+            }
+        }
+        catch
+        {
+            partnerji.Clear();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

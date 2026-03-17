@@ -33,6 +33,14 @@ else if (errorMessage != null)
 else
 {
     <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
+        <!-- Filter od/do -->
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 0.85rem;">
+            <span>Od:</span>
+            <DxDateEdit @bind-Date="@filterDatumOd" DisplayFormat="dd.MM.yyyy" CssClass="" style="width: 130px;" />
+            <span>Do:</span>
+            <DxDateEdit @bind-Date="@filterDatumDo" DisplayFormat="dd.MM.yyyy" CssClass="" style="width: 130px;" />
+            <DxButton Text="Naloži" RenderStyle="ButtonRenderStyle.Primary" Click="@OnNaloziClick" />
+        </div>
         <!-- Zgornji del -->
         <div style="flex: 1; display: flex; gap: 8px; min-height: 0;">
             <!-- Levo: grid nalogov -->
@@ -480,6 +488,8 @@ else
     int _leto;
     int _lastPredracunPartner;
     bool samoNepotrjeni = true;
+    DateTime filterDatumOd;
+    DateTime filterDatumDo;
 
     // Vnos artikla dialog
     bool showVnosArtikla;
@@ -535,10 +545,38 @@ else
             _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
             _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
 
+            filterDatumOd = new DateTime(_leto, _mesec, 1);
+            filterDatumDo = filterDatumOd.AddMonths(1).AddDays(-1);
+
             // Ustvari manjkajoče OBRACUN_DN zapise pred nalaganjem
             await ObracunService.UstvariManjkajoceObracunDnAsync(_leto, _mesec);
 
-            nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(_leto, _mesec);
+            nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(filterDatumOd, filterDatumDo);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task OnNaloziClick()
+    {
+        isLoading = true;
+        errorMessage = null;
+        selectedNalog = null;
+        selectedPredracun = null;
+        nalogPostavke = new();
+        predracuni = new();
+        predracunPostavke = new();
+        _lastPredracunPartner = 0;
+
+        try
+        {
+            nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(filterDatumOd, filterDatumDo);
         }
         catch (Exception ex)
         {
