@@ -27,7 +27,8 @@ public static class MigrationManager
         { 108, ApplyV108 },
         { 109, ApplyV109 },
         { 110, ApplyV110 },
-        { 111, ApplyV111 }
+        { 111, ApplyV111 },
+        { 112, ApplyV112 }
     };
 
     /// <summary>
@@ -143,6 +144,7 @@ public static class MigrationManager
         108 => "OBRACUN_OSNUTEK_POTRDITEV: nova tabela za potrditve osnutkov",
         109 => "OBRACUN_OSNUTEK: dodan stolpec LETNA_POGODBA",
         110 => "OBRACUN_LOCENI_RACUNI: nova tabela za ločene račune",
+        112 => "OBRACUN_OSNUTEK_POS: dodana stolpca KDO in KDAJ",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -453,6 +455,16 @@ public static class MigrationManager
             PREDRACUN_LETO INTEGER NOT NULL,
             PRIMARY KEY (STEVILKA, LETO, PREDRACUN_STEVILKA, PREDRACUN_LETO)
         )", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 112: Dodaj stolpca KDO in KDAJ v tabelo OBRACUN_OSNUTEK_POS.
+    /// </summary>
+    private static string? ApplyV112(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD KDO VARCHAR(100)", status);
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_OSNUTEK_POS ADD KDAJ TIMESTAMP", status);
         return null;
     }
 }

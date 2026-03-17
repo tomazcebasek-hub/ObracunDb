@@ -66,4 +66,10 @@ public class ObracunOsnutekPos
 
     [Column("TIP_POSTAVKE")]
     public TipPostavke TipPostavke { get; set; }
+
+    [Column("KDO")]
+    public string? Kdo { get; set; }
+
+    [Column("KDAJ")]
+    public DateTime? Kdaj { get; set; }
 }

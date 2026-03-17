@@ -161,6 +161,7 @@
         @if (selectedNalog != null)
         {
             <DxButton Text="Račun" RenderStyle="ButtonRenderStyle.Danger" Click="@OnRacunClick" />
+            <DxButton Text="Nalogi" RenderStyle="ButtonRenderStyle.Light" Click="@OnNalogiClick" />
         }
     </div>
 </div>
@@ -212,6 +213,12 @@
     </FooterContentTemplate>
 </DxPopup>
 
+<NalogiPartnerPopup @bind-Visible="@showNalogi"
+                    Partner="@(selectedNalog?.Partner ?? 0)"
+                    Mesec="@_mesec"
+                    Leto="@_leto"
+                    NazivPartnerja="@(selectedNalog?.NazivPartnerja)" />
+
 @code {
     IGrid? gridNalogi;
     List<PotrjevanjeNalogDto> nalogi = new();
@@ -229,6 +236,9 @@
     string? racunError;
     string? racunMessage;
     string racunHeader = "Račun";
+
+    // Nalogi dialog
+    bool showNalogi;
 
     string izbranObdobje = "trenutni";
     DateTime? datumOd;
@@ -307,6 +317,12 @@
                 errorMessage = $"Napaka: {ex.Message}";
             }
         }
+    }
+
+    void OnNalogiClick()
+    {
+        if (selectedNalog == null) return;
+        showNalogi = true;
     }
 
     async Task OnRacunClick()

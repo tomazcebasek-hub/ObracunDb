@@ -1,0 +1,166 @@
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject ObracunService ObracunService
+
+<DxPopup @bind-Visible="@visibleInternal"
+         HeaderText="@headerText"
+         Width="100vw"
+         Height="100vh"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div style="display: flex; flex-direction: column; height: calc(100vh - 120px);">
+            @if (isLoading)
+            {
+                <p>Nalagam naloge...</p>
+            }
+            else if (errorMessage != null)
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+            else if (nalogi != null && nalogi.Count > 0)
+            {
+                <div style="flex: 2; min-height: 0; overflow: hidden;">
+                    <DxGrid Data="@nalogi"
+                            KeyFieldName="@nameof(NalogiPartnerNalogDto.Key)"
+                            CssClass="w-100"
+                            PageSize="0"
+                            VirtualScrollingEnabled="true"
+                            AutoExpandAllDetailRows="true"
+                            FocusedRowEnabled="true"
+                            FocusedRowChanged="@OnFocusedRowChanged"
+                            style="height: 100%;">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Stevilka)" Caption="Številka" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Serviser)" Caption="Serviser" Width="140px" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" SortIndex="0" SortOrder="GridColumnSortOrder.Descending" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.ZacetekUra)" Caption="Začetek" DisplayFormat="HH:mm" Width="65px" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.KonecUra)" Caption="Konec" DisplayFormat="HH:mm" Width="65px" />
+                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerNalogDto.Trajanje)" Caption="Trajanje" Width="70px" />
+                        </Columns>
+                        <DetailRowTemplate Context="detailContext">
+                            @{
+                                var nalog = (NalogiPartnerNalogDto)detailContext.DataItem;
+                                if (nalog.Obracuni.Count > 0)
+                                {
+                                    <DxGrid Data="@nalog.Obracuni"
+                                            KeyFieldName="@nameof(NalogiPartnerObracunDto.Key)"
+                                            CssClass="w-100"
+                                            PageSize="0"
+                                            ShowAllRows="true">
+                                        <Columns>
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.Obracunam)" Caption="Obračunam" Width="75px">
+                                                <CellDisplayTemplate Context="cellContext">
+                                                    @((bool)(cellContext.Value ?? false) ? "Da" : "Ne")
+                                                </CellDisplayTemplate>
+                                            </DxGridDataColumn>
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.SifraArtikla)" Caption="Šifra" Width="90px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.NazivArtikla)" Caption="Naziv" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.EnotaArtikla)" Caption="Enota" Width="60px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="75px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.ProdajnaCena)" Caption="Cena" DisplayFormat="N2" Width="75px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.PartnerMinute)" Caption="Partner min." Width="80px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.PredracunMinute)" Caption="Predračun min." Width="95px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.RocnoMinute)" Caption="Ročno min." Width="75px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.PogodbaMinute)" Caption="Pogodba min." Width="85px" />
+                                            <DxGridDataColumn FieldName="@nameof(NalogiPartnerObracunDto.SkupajMinute)" Caption="Skupaj min." Width="80px" />
+                                        </Columns>
+                                    </DxGrid>
+                                }
+                                else
+                                {
+                                    <span class="text-muted" style="font-size:0.85rem; padding: 4px;">Ni podatkov o obračunu.</span>
+                                }
+                            }
+                        </DetailRowTemplate>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(NalogiPartnerNalogDto.Stevilka)" DisplayText="Nalogov: {0}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(NalogiPartnerNalogDto.Trajanje)" DisplayText="Skupaj: {0} min" />
+                        </TotalSummary>
+                    </DxGrid>
+                </div>
+                <div style="flex: 1; min-height: 0; border-top: 1px solid #dee2e6; padding-top: 8px; margin-top: 8px; display: flex; flex-direction: column;">
+                    <label class="form-label fw-bold mb-1">
+                        Opis naloga@(selectedNalog != null ? $" — {selectedNalog.Stevilka}/{selectedNalog.Leto}" : "")
+                    </label>
+                    <textarea class="form-control" readonly
+                              style="flex: 1; min-height: 0; resize: none; font-family: monospace; font-size: 0.85rem;"
+                              >@(selectedNalog?.Opis ?? "")</textarea>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">Partner nima nalogov v tem obdobju.</p>
+            }
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => Close())" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int Partner { get; set; }
+    [Parameter] public int Mesec { get; set; }
+    [Parameter] public int Leto { get; set; }
+    [Parameter] public string? NazivPartnerja { get; set; }
+
+    List<NalogiPartnerNalogDto>? nalogi;
+    NalogiPartnerNalogDto? selectedNalog;
+    bool isLoading;
+    string? errorMessage;
+    string headerText = "Nalogi";
+    bool visibleInternal;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !visibleInternal)
+        {
+            visibleInternal = true;
+            selectedNalog = null;
+            headerText = string.IsNullOrEmpty(NazivPartnerja)
+                ? $"Nalogi — Partner {Partner}"
+                : $"Nalogi — {Partner} — {NazivPartnerja}";
+            await NaloziPodatke();
+        }
+        else if (!Visible && visibleInternal)
+        {
+            visibleInternal = false;
+        }
+    }
+
+    void OnFocusedRowChanged(GridFocusedRowChangedEventArgs e)
+    {
+        selectedNalog = e.DataItem as NalogiPartnerNalogDto;
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+        errorMessage = null;
+        nalogi = null;
+        selectedNalog = null;
+
+        try
+        {
+            nalogi = await ObracunService.GetNalogiZaPartnerjaPopupAsync(Leto, Mesec, Partner);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task Close()
+    {
+        visibleInternal = false;
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

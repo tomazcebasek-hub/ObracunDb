@@ -1859,8 +1859,8 @@ public class ObracunService
         }
 
         await using (var cmd = new FbCommand(@"
-            INSERT INTO OBRACUN_OSNUTEK_POS (MESEC, LETO, PARTNER, ZS, ARTIKEL, NAZIV, KOLICINA, CENA, RABAT, TIP_POSTAVKE, NALOG_STEVILKA, NALOG_LETO)
-            VALUES (@Mesec, @Leto, @Partner, @Zs, @Artikel, @Naziv, @Kolicina, @Cena, @Rabat, @TipPostavke, @NalogStevilka, @NalogLeto)", connection))
+            INSERT INTO OBRACUN_OSNUTEK_POS (MESEC, LETO, PARTNER, ZS, ARTIKEL, NAZIV, KOLICINA, CENA, RABAT, TIP_POSTAVKE, NALOG_STEVILKA, NALOG_LETO, KDO, KDAJ)
+            VALUES (@Mesec, @Leto, @Partner, @Zs, @Artikel, @Naziv, @Kolicina, @Cena, @Rabat, @TipPostavke, @NalogStevilka, @NalogLeto, @Kdo, @Kdaj)", connection))
         {
             cmd.Parameters.AddWithValue("@Mesec", mesec);
             cmd.Parameters.AddWithValue("@Leto", leto);
@@ -1874,6 +1874,8 @@ public class ObracunService
             cmd.Parameters.AddWithValue("@TipPostavke", (int)TipPostavke.ROCNI);
             cmd.Parameters.AddWithValue("@NalogStevilka", (object?)nalogStevilka ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@NalogLeto", (object?)nalogLeto ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@Kdo", TrenutniUporabnik);
+            cmd.Parameters.AddWithValue("@Kdaj", DateTime.Now);
 
             await cmd.ExecuteNonQueryAsync();
         }
@@ -2215,5 +2217,216 @@ public class ObracunService
         }
 
         await tx.CommitAsync();
+    }
+
+    // ==================== Nalogi za partnerja (popup) ====================
+
+    /// <summary>
+    /// Pridobi naloge za partnerja za prikaz v popup-u z obraèunskimi podrobnostmi.
+    /// </summary>
+    public async Task<List<NalogiPartnerNalogDto>> GetNalogiZaPartnerjaPopupAsync(int leto, int mesec, int partner)
+    {
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        var prviDan = new DateTime(leto, mesec, 1);
+        var zadnjiDan = prviDan.AddMonths(1).AddDays(-1);
+
+        // 1. Preberi naloge iz FA_DN_NALOG
+        var nalogi = new Dictionary<string, NalogiPartnerNalogDto>();
+        await using (var cmd = new FbCommand(@"
+            SELECT STEVILKA, LETO, ZACETEK_DATUM, ZACETEK_URA, KONEC_URA, POTNIK,
+                   NAZIV1, NAZIV2, NAZIV3, NAZIV4, NAZIV5, NAZIV6, NAZIV7, NAZIV8, NAZIV9
+            FROM FA_DN_NALOG
+            WHERE PARTNER = @Partner AND LETO >= 2026
+              AND ZACETEK_DATUM >= @DatumOd AND ZACETEK_DATUM <= @DatumDo
+              AND FAKTURIRANA <> 1
+            ORDER BY ZACETEK_DATUM DESC, ZACETEK_URA DESC", connection))
+        {
+            cmd.Parameters.AddWithValue("@Partner", partner);
+            cmd.Parameters.AddWithValue("@DatumOd", prviDan);
+            cmd.Parameters.AddWithValue("@DatumDo", zadnjiDan);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var stevilka = reader.GetString(0).Trim();
+                var letoNaloga = reader.GetInt32(1);
+                var datum = reader.IsDBNull(2) ? (DateTime?)null : reader.GetDateTime(2);
+                var zacetekUra = reader.IsDBNull(3) ? (DateTime?)null : reader.GetDateTime(3);
+                var konecUra = reader.IsDBNull(4) ? (DateTime?)null : reader.GetDateTime(4);
+                var potnik = reader.IsDBNull(5) ? null : reader.GetString(5).Trim();
+
+                // Opis iz NAZIV1..NAZIV9
+                var nazivi = new List<string>();
+                for (int i = 6; i <= 14; i++)
+                {
+                    if (!reader.IsDBNull(i))
+                    {
+                        var val = reader.GetString(i).Trim();
+                        if (!string.IsNullOrEmpty(val))
+                            nazivi.Add(val);
+                    }
+                }
+                var opis = nazivi.Count > 0 ? string.Join(Environment.NewLine, nazivi) : null;
+
+                // Izraèunaj trajanje: terenski = KonecUra - ZacetekUra
+                int trajanje = 0;
+                if (zacetekUra.HasValue && konecUra.HasValue)
+                {
+                    var razlika = (konecUra.Value - zacetekUra.Value).TotalMinutes;
+                    if (razlika < 0) razlika += 24 * 60;
+                    trajanje = (int)razlika;
+                }
+
+                var key = $"{stevilka}/{letoNaloga}";
+                nalogi[key] = new NalogiPartnerNalogDto
+                {
+                    Stevilka = stevilka,
+                    Leto = letoNaloga,
+                    Datum = datum,
+                    ZacetekUra = zacetekUra,
+                    KonecUra = konecUra,
+                    Trajanje = trajanje,
+                    Serviser = potnik, // zaèasno šifra, zamenjamo z imenom
+                    Opis = opis
+                };
+            }
+        }
+
+        if (nalogi.Count == 0)
+            return new List<NalogiPartnerNalogDto>();
+
+        // 2. Za helpdesk naloge (1000000-1999999) preberi kolièino artikla 047512
+        var helpdeskStevilke = nalogi.Values
+            .Where(n => int.TryParse(n.Stevilka, out var s) && s >= 1000000 && s <= 1999999)
+            .Select(n => n.Stevilka)
+            .ToList();
+
+        if (helpdeskStevilke.Count > 0)
+        {
+            var inList = string.Join(",", helpdeskStevilke.Select(s => $"'{s.Replace("'", "''")}'"));
+            var letaIn = string.Join(",", nalogi.Values.Select(n => n.Leto).Distinct());
+            await using var cmd = new FbCommand($@"
+                SELECT STEVILKA, LETO, KOLICINA
+                FROM FA_DN_NALOG_KNJ
+                WHERE STEVILKA IN ({inList}) AND LETO IN ({letaIn}) AND SIFRA = '047512'", connection);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var stevilka = reader.GetString(0).Trim();
+                var letoNaloga = reader.GetInt32(1);
+                var kolicina = reader.GetDecimal(2);
+                var key = $"{stevilka}/{letoNaloga}";
+                if (nalogi.TryGetValue(key, out var nalog))
+                    nalog.Trajanje = (int)kolicina;
+            }
+        }
+
+        // 3. Preberi nazive komercialistov (serviserjev)
+        var potnikSifre = nalogi.Values
+            .Where(n => !string.IsNullOrEmpty(n.Serviser))
+            .Select(n => n.Serviser!)
+            .Distinct()
+            .ToList();
+
+        if (potnikSifre.Count > 0)
+        {
+            var inList = string.Join(",", potnikSifre.Select(s => $"'{s.Replace("'", "''")}'"));
+            await using var cmd = new FbCommand($"SELECT SIFRA, PRIIMEK, IME FROM FA_KOMERCIALIST WHERE SIFRA IN ({inList})", connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            var komerci = new Dictionary<string, string>();
+            while (await reader.ReadAsync())
+            {
+                var sifra = reader.GetString(0).Trim();
+                var priimek = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+                var ime = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
+                komerci[sifra] = string.IsNullOrEmpty(ime) ? priimek : $"{priimek} {ime}".Trim();
+            }
+            foreach (var n in nalogi.Values.Where(n => !string.IsNullOrEmpty(n.Serviser) && komerci.ContainsKey(n.Serviser!)))
+                n.Serviser = komerci[n.Serviser!];
+        }
+
+        // 4. Preberi podrobnosti obraèuna iz OBRACUN_OSNUTEK_NALOG_OBRACUN
+        var stevilkeIn = string.Join(",", nalogi.Values.Select(n => $"'{n.Stevilka.Replace("'", "''")}'").Distinct());
+        var letaObracun = string.Join(",", nalogi.Values.Select(n => n.Leto).Distinct());
+
+        var obracuni = new List<(string Key, NalogiPartnerObracunDto Dto)>();
+        await using (var cmd = new FbCommand($@"
+            SELECT STEVILKA_NALOGA, LETO_NALOGA, OBRACUNAM, SIFRA_ARTIKLA, KOLICINA, PRODAJNA_CENA,
+                   MINUTE_ODSTETE_PARTNER_MINUTE, MINUTE_ODSTETE_PREDRACUN, MINUTE_ODSTETE_ROCNO, MINUTE_ODSTETE_POGODBA
+            FROM OBRACUN_OSNUTEK_NALOG_OBRACUN
+            WHERE MESEC = @Mesec AND LETO = @Leto AND PARTNER = @Partner
+              AND STEVILKA_NALOGA IN ({stevilkeIn}) AND LETO_NALOGA IN ({letaObracun})", connection))
+        {
+            cmd.Parameters.AddWithValue("@Mesec", mesec);
+            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Partner", partner);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var stevilka = reader.GetString(0).Trim();
+                var letoNaloga = reader.GetInt32(1);
+                var obracunam = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                var sifraArtikla = reader.IsDBNull(3) ? null : reader.GetString(3).Trim();
+                var kolicina = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4);
+                var prodajnaCena = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5);
+                var partnerMin = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
+                var predracunMin = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+                var rocnoMin = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
+                var pogodbaMin = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
+
+                var key = $"{stevilka}/{letoNaloga}";
+                obracuni.Add((key, new NalogiPartnerObracunDto
+                {
+                    StevilkaNaloga = stevilka,
+                    LetoNaloga = letoNaloga,
+                    Obracunam = obracunam == 1,
+                    SifraArtikla = sifraArtikla,
+                    Kolicina = kolicina,
+                    ProdajnaCena = prodajnaCena,
+                    PartnerMinute = partnerMin,
+                    PredracunMinute = predracunMin,
+                    RocnoMinute = rocnoMin,
+                    PogodbaMinute = pogodbaMin,
+                    SkupajMinute = partnerMin + predracunMin + rocnoMin + pogodbaMin
+                }));
+            }
+        }
+
+        // 5. Obogati obraèune z nazivi artiklov
+        var artikelSifre = obracuni.Where(o => !string.IsNullOrEmpty(o.Dto.SifraArtikla))
+            .Select(o => o.Dto.SifraArtikla!).Distinct().ToList();
+        var artikelMap = new Dictionary<string, (string Naziv, string? Enota)>();
+        if (artikelSifre.Count > 0)
+        {
+            var inList = string.Join(",", artikelSifre.Select(s => $"'{s.Replace("'", "''")}'"));
+            await using var cmd = new FbCommand($"SELECT SIFRA, NAZIV, NAZIV2, ENOTA FROM FA_ARTIKEL WHERE SIFRA IN ({inList})", connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var sifra = reader.GetString(0).Trim();
+                var naziv = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+                var naziv2 = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
+                var enota = reader.IsDBNull(3) ? null : reader.GetString(3).Trim();
+                artikelMap[sifra] = (ArtikelHelper.GetFullName(naziv, naziv2), enota);
+            }
+        }
+
+        foreach (var (key, dto) in obracuni)
+        {
+            if (!string.IsNullOrEmpty(dto.SifraArtikla) && artikelMap.TryGetValue(dto.SifraArtikla, out var art))
+            {
+                dto.NazivArtikla = art.Naziv;
+                dto.EnotaArtikla = art.Enota;
+            }
+
+            if (nalogi.TryGetValue(key, out var nalog))
+                nalog.Obracuni.Add(dto);
+        }
+
+        return nalogi.Values.OrderByDescending(n => n.Datum).ThenByDescending(n => n.ZacetekUra).ToList();
     }
 }

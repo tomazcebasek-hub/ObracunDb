@@ -255,6 +255,7 @@ else
                 <DxButton Text="Poveži predračune" RenderStyle="ButtonRenderStyle.Success" Click="@OpenPoveziPredracune" />
                 <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" Click="@OpenStatistika" />
                 <DxButton Text="Račun" RenderStyle="ButtonRenderStyle.Danger" Click="@OnRacunClick" />
+                <DxButton Text="Nalogi" RenderStyle="ButtonRenderStyle.Light" Click="@OnNalogiClick" />
             }
             <div style="margin-left: auto; display: flex; gap: 6px;">
                 <DxButton Text="Nič + Potrdi" RenderStyle="ButtonRenderStyle.Dark" Click="@OnNicPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
@@ -457,6 +458,12 @@ else
             <DxButton Text="Prekliči" Click="@(() => { showPoveziPredracune = false; povezaveError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
         </FooterContentTemplate>
     </DxPopup>
+
+    <NalogiPartnerPopup @bind-Visible="@showNalogi"
+                        Partner="@(selectedNalog?.Partner ?? 0)"
+                        Mesec="@_mesec"
+                        Leto="@_leto"
+                        NazivPartnerja="@(selectedNalog?.NazivPartnerja)" />
 }
 
 @code {
@@ -494,6 +501,9 @@ else
     string? racunError;
     string? racunMessage;
     string racunHeader = "Račun";
+
+    // Nalogi dialog
+    bool showNalogi;
 
     // Poveži predračune dialog
     bool showPoveziPredracune;
@@ -790,6 +800,12 @@ else
             p.Povezan = je;
             p.PovezanOriginal = je;
         }
+    }
+
+    void OnNalogiClick()
+    {
+        if (selectedNalog == null) return;
+        showNalogi = true;
     }
 
     async Task OnRacunClick()
