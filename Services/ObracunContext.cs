@@ -34,6 +34,7 @@ namespace ObracunDb.Services
 
         // Servisne nastavitve za obračun
         public required ServisneNastavitve ServisneNastavitve { get; init; }
+        public required ServisneNastavitve TerenServisneNastavitve { get; init; }
 
         // Popust za pogodbene stranke (v procentih)
         public required decimal PopustPogodbe { get; init; }

@@ -1,0 +1,1 @@
+﻿using System; using System.Linq; using System.Reflection; var asm = Assembly.LoadFrom(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + @"\.nuget\packages\linq2db\6.1.0\lib\net8.0\linq2db.dll"); foreach(var t in asm.GetExportedTypes().Where(t => t.Name.Contains("Trace"))) Console.WriteLine(t.FullName);

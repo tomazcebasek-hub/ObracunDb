@@ -6,6 +6,7 @@
 @inject ConnectionTestResult ConnectionTest
 @inject ProtectedLocalStorage LocalStorage
 @inject ProtectedSessionStorage SessionStorage
+@inject IWebHostEnvironment Environment
 @implements IDisposable
 
 @if (!ConnectionTest.IsSuccess)
@@ -32,6 +33,11 @@ else if (shouldRender)
     {
         if (firstRender && !_sessionChecked && ConnectionTest.IsSuccess)
         {
+            if (!AuthService.IsAuthenticated && Environment.IsDevelopment())
+            {
+                await AuthService.AutoLoginAsAdminAsync();
+            }
+
             if (!AuthService.IsAuthenticated)
             {
                 await AuthService.RestoreSessionAsync(LocalStorage, SessionStorage);

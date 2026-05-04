@@ -1,0 +1,197 @@
+@page "/spremembe-kolicin"
+@rendermode InteractiveServer
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject ParametriService Parametri
+@inject ObracunOsnutekSpremembaService SpremembaService
+@inject ArtikelService ArtikelService
+
+<PageTitle>Spremembe količin</PageTitle>
+
+<h3>Spremembe količin <span class="text-muted" style="font-size:0.85rem;">@_mesec/@_leto</span></h3>
+
+@if (isLoading)
+{
+    <p>Nalagam...</p>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+
+    <DxGrid Data="@spremembe"
+            KeyFieldName="@nameof(ObracunOsnutekSpremembaDto.Id)"
+            ShowAllRows="true"
+            ShowFilterRow="true"
+            CssClass="w-100">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.Partner)" Caption="Partner" Width="80px" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.NazivPartnerja)" Caption="Naziv partnerja" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.Artikel)" Caption="Artikel" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.NazivArtikla)" Caption="Naziv artikla" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.Kolicina)" Caption="Količina" DisplayFormat="N2" Width="100px" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.Opomba)" Caption="Opomba" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.Uporabnik)" Caption="Uporabnik" Width="110px" />
+            <DxGridDataColumn FieldName="@nameof(ObracunOsnutekSpremembaDto.DatumVnosa)" Caption="Datum vnosa" DisplayFormat="dd.MM.yyyy HH:mm" Width="140px" />
+            <DxGridDataColumn Caption="" Width="100px">
+                <CellDisplayTemplate Context="cellCtx">
+                    @{ var item = (ObracunOsnutekSpremembaDto)cellCtx.DataItem; }
+                    <a href="javascript:void(0)" @onclick="@(() => Edit(item))" class="me-2" title="Uredi">✏️</a>
+                    <a href="javascript:void(0)" @onclick="@(() => ShowDelete(item))" style="color:#e57373;" title="Izbriši">🗑️</a>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+        </Columns>
+    </DxGrid>
+
+    @* === Edit dialog === *@
+    <DxPopup @bind-Visible="@showEditDialog"
+             HeaderText="Uredi spremembo količine"
+             Width="600px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px;">Partner</label>
+                <DxTextBox Text="@editPartnerDisplay" ReadOnly="true" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px;">Artikel</label>
+                <DxComboBox Data="@artikli"
+                            Value="@editArtikel"
+                            ValueChanged="@((string v) => editArtikel = v)"
+                            TextFieldName="DisplayName"
+                            ValueFieldName="Sifra"
+                            NullText="Izberi artikel..."
+                            CssClass="w-100"
+                            FilteringMode="DataGridFilteringMode.Contains" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
+                <label style="min-width:140px;">Količina</label>
+                <DxSpinEdit @bind-Value="@editKolicina" CssClass="w-100" />
+            </div>
+            <div class="mb-3" style="display:flex; align-items:flex-start; gap:12px;">
+                <label style="min-width:140px; padding-top:6px;">Opomba</label>
+                <DxMemo @bind-Text="@editOpomba" Rows="3" CssClass="w-100" />
+            </div>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            @if (!string.IsNullOrEmpty(editError))
+            {
+                <span class="text-danger me-auto" style="font-size:0.85rem;">@editError</span>
+            }
+            <DxButton Text="Shrani" Click="@Save" RenderStyle="ButtonRenderStyle.Primary" />
+            <DxButton Text="Prekliči" Click="@(() => { showEditDialog = false; editError = null; })" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+
+    <DxPopup @bind-Visible="@showDeleteDialog"
+             HeaderText="Potrditev brisanja"
+             Width="400px"
+             ShowFooter="true"
+             CloseOnEscape="true">
+        <BodyContentTemplate>
+            <p>Ali ste prepričani, da želite izbrisati ta vnos?</p>
+        </BodyContentTemplate>
+        <FooterContentTemplate>
+            <DxButton Text="Izbriši" Click="@DoDelete" RenderStyle="ButtonRenderStyle.Danger" />
+            <DxButton Text="Prekliči" Click="@(() => showDeleteDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+        </FooterContentTemplate>
+    </DxPopup>
+}
+
+@code {
+    int _mesec;
+    int _leto;
+    bool isLoading = true;
+    string? errorMessage;
+    List<ObracunOsnutekSpremembaDto> spremembe = new();
+    List<Data.DTOs.ArtikelDto> artikli = new();
+
+    bool showEditDialog;
+    bool showDeleteDialog;
+    int editId;
+    string editPartnerDisplay = "";
+    string? editArtikel;
+    decimal editKolicina;
+    string? editOpomba;
+    string? editError;
+    ObracunOsnutekSpremembaDto? toDelete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+            artikli = await ArtikelService.GetAllArtikliAsync();
+            Reload();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    void Reload()
+    {
+        spremembe = SpremembaService.GetForObdobje(_mesec, _leto);
+    }
+
+    void Edit(ObracunOsnutekSpremembaDto item)
+    {
+        editId = item.Id;
+        editPartnerDisplay = $"{item.Partner} — {item.NazivPartnerja}";
+        editArtikel = item.Artikel;
+        editKolicina = item.Kolicina;
+        editOpomba = item.Opomba;
+        editError = null;
+        showEditDialog = true;
+    }
+
+    void Save()
+    {
+        if (string.IsNullOrWhiteSpace(editArtikel))
+        {
+            editError = "Izberi artikel.";
+            return;
+        }
+        if (editKolicina == 0)
+        {
+            editError = "Količina ne sme biti 0.";
+            return;
+        }
+        try
+        {
+            SpremembaService.Update(editId, editArtikel!, editKolicina, editOpomba);
+            showEditDialog = false;
+            Reload();
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+    }
+
+    void ShowDelete(ObracunOsnutekSpremembaDto item)
+    {
+        toDelete = item;
+        showDeleteDialog = true;
+    }
+
+    void DoDelete()
+    {
+        if (toDelete != null)
+        {
+            SpremembaService.Delete(toDelete.Id);
+            toDelete = null;
+            Reload();
+        }
+        showDeleteDialog = false;
+    }
+}

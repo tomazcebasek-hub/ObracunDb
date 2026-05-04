@@ -30,7 +30,8 @@ public static class MigrationManager
         { 111, ApplyV111 },
         { 112, ApplyV112 },
         { 113, ApplyV113 },
-        { 114, ApplyV114 }
+        { 114, ApplyV114 },
+        { 115, ApplyV115 }
     };
 
     /// <summary>
@@ -149,6 +150,7 @@ public static class MigrationManager
         112 => "OBRACUN_OSNUTEK_POS: dodana stolpca KDO in KDAJ",
         113 => "OBRACUN_OSNUTEK_POS: dodana stolpca POGODBA_STEVILKA in POGODBA_LETO",
         114 => "OBRACUN_OSNUTEK_RACUN: nova tabela za ločene račune po pogodbah",
+        115 => "OBRACUN_OSNUTEK_SPREMEMBA: nova tabela za ročne korekture količin",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -498,6 +500,32 @@ public static class MigrationManager
             RACUN_LETO         INTEGER,
             PRIMARY KEY (MESEC, LETO, PARTNER, POGODBA_STEVILKA, POGODBA_LETO)
         )", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 115: Nova tabela OBRACUN_OSNUTEK_SPREMEMBA za ročne korekture količin v osnutku.
+    /// </summary>
+    private static string? ApplyV115(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_OSNUTEK_SPREMEMBA (
+            ID           INTEGER NOT NULL PRIMARY KEY,
+            MESEC        INTEGER NOT NULL,
+            LETO         INTEGER NOT NULL,
+            PARTNER      INTEGER NOT NULL,
+            ARTIKEL      VARCHAR(20) NOT NULL,
+            KOLICINA     NUMERIC(15,4) NOT NULL,
+            OPOMBA       VARCHAR(255),
+            UPORABNIK    VARCHAR(100) NOT NULL,
+            DATUM_VNOSA  TIMESTAMP NOT NULL
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBRACUN_OSNUTEK_SPREMEMBA_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBRACUN_OSNUTEK_SPREMEMBA FOR OBRACUN_OSNUTEK_SPREMEMBA
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBRACUN_OSNUTEK_SPREMEMBA_ID, 1);
+            END", status);
         return null;
     }
 }

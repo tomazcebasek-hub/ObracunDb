@@ -1,9 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 using LinqToDB;
+using LinqToDB.Data;
+using Microsoft.Extensions.Hosting;
 using ObracunDb.Data;
 using ObracunDb.Data.Entities;
 using ObracunDb.Services;
@@ -17,11 +21,13 @@ namespace ObracunDb.Services
 
         private readonly FirebirdConnectionManager _connectionManager;
         private readonly ParametriService _parametri;
+        private readonly IHostEnvironment _environment;
 
-        public ObracunIzvedbaService(FirebirdConnectionManager connectionManager, ParametriService parametri)
+        public ObracunIzvedbaService(FirebirdConnectionManager connectionManager, ParametriService parametri, IHostEnvironment environment)
         {
             _connectionManager = connectionManager;
             _parametri = parametri;
+            _environment = environment;
         }
 
         private ObracunLinqDb CreateDb()
@@ -145,7 +151,7 @@ namespace ObracunDb.Services
 
         #endregion
 
-        public (bool Success, string Message, int RecordsProcessed, List<string> Log) IzvediObracun(int mesec, int leto, HashSet<DateTime>? prazniki = null)
+        public (bool Success, string Message, int RecordsProcessed, List<string> Log) IzvediObracun(int mesec, int leto, HashSet<DateTime>? prazniki = null, int debugPartner = 0)
         {
             var log = new List<string>();
             prazniki ??= new HashSet<DateTime>();
@@ -183,14 +189,72 @@ namespace ObracunDb.Services
                 // Manjkajoče šifre za obračun brez pogodbe (zberi enkrat)
                 var manjkajoceSifre = new HashSet<string>();
 
+                // Log sprememb količin (čez vse partnerje)
+                var spremembeLog = new List<string>();
+
+                // DEBUG: prestrezi opis za izbranega debug partnerja (0 = brez debug)
+                string? debugOpis = null;
+                bool debugPartnerObdelan = false;
+                PartnerObracunResult? debugResult = null;
+
                 foreach (var partner in vsiPartnerji)
                 {
                     var partnerData = PripraviPodatkeZaPartnerja(ctx, partner);
                     var result = ObdelajPartnerja(ctx, partnerData, manjkajoceSifre);
-                    ShraniOsnutek(ctx, result);
+
+                    // DEBUG: za izbranega debug partnerja zapiši insert + preveri rezultat (zapiši v Opis, da bo vidno v zadnjem bloku)
+                    if (debugPartner > 0 && partner == debugPartner)
+                    {
+                        var dbgSb = new System.Text.StringBuilder(result.Opis ?? "");
+                        try
+                        {
+                            dbgSb.AppendLine();
+                            dbgSb.AppendLine($"[INSERT-DEBUG] Pred ShraniOsnutek: Opis dolžina = {result.Opis?.Length ?? 0} znakov");
+                            dbgSb.AppendLine($"[INSERT-DEBUG] MinuteObracunane={result.MinuteObracunane}, MinuteNeobracunane={result.MinuteNeobracunane}, ImaNaloge={result.ImaNaloge}, ImaPogodbo={result.ImaPogodbo}");
+
+                            var preObstaja = ctx.Db.ObracunOsnutek.Any(o => o.Mesec == ctx.Mesec && o.Leto == ctx.Leto && o.Partner == partner);
+                            dbgSb.AppendLine($"[INSERT-DEBUG] Pred insertom obstaja v OBRACUN_OSNUTEK: {preObstaja}");
+
+                            ShraniOsnutek(ctx, result);
+
+                            var poObstaja = ctx.Db.ObracunOsnutek.Any(o => o.Mesec == ctx.Mesec && o.Leto == ctx.Leto && o.Partner == partner);
+                            dbgSb.AppendLine($"[INSERT-DEBUG] Po insertu obstaja v OBRACUN_OSNUTEK: {poObstaja}");
+
+                            var stPostavk = ctx.Db.ObracunOsnutekPos.Count(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner);
+                            dbgSb.AppendLine($"[INSERT-DEBUG] Število postavk v OBRACUN_OSNUTEK_POS: {stPostavk}");
+                        }
+                        catch (Exception exDbg)
+                        {
+                            dbgSb.AppendLine($"[INSERT-DEBUG] !!! NAPAKA pri ShraniOsnutek: {exDbg.GetType().FullName}: {exDbg.Message}");
+                            var inner = exDbg.InnerException;
+                            int level = 1;
+                            while (inner != null)
+                            {
+                                dbgSb.AppendLine($"[INSERT-DEBUG] !!! Inner({level}): {inner.GetType().FullName}: {inner.Message}");
+                                inner = inner.InnerException;
+                                level++;
+                            }
+                            dbgSb.AppendLine($"[INSERT-DEBUG] !!! Stack: {exDbg.StackTrace}");
+                        }
+                        result.Opis = dbgSb.ToString();
+                    }
+                    else
+                    {
+                        ShraniOsnutek(ctx, result);
+                    }
+
+                    // Uporabi ročne spremembe količin (Sprememba količine)
+                    UporabiSpremembeKolicin(ctx, partner, spremembeLog);
 
                     // Prištej minute partnerja k skupnim
                     skupneMinute.Pristej(result.MinuteNalogov);
+
+                    if (debugPartner > 0 && partner == debugPartner)
+                    {
+                        debugPartnerObdelan = true;
+                        debugOpis = result.Opis;
+                        debugResult = result;
+                    }
                 }
 
                 // Izpiši manjkajoče šifre (samo enkrat)
@@ -208,8 +272,62 @@ namespace ObracunDb.Services
                     log.Add("Prosim nastavite manjkajoče šifre v Parametri > Servisna.");
                 }
 
+                // Izpiši uporabljene spremembe količin
+                if (spremembeLog.Count > 0)
+                {
+                    log.Add("");
+                    log.Add("============================================");
+                    log.Add("=== SPREMEMBE KOLIČIN (ročne korekture) ===");
+                    log.Add("============================================");
+                    foreach (var v in spremembeLog)
+                        log.Add(v);
+                    log.Add("============================================");
+                }
+
                 log.Add("");
                 log.Add($"Konec: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+
+                // DEBUG: izpis za izbranega debug partnerja (samo če je nastavljen, > 0)
+                if (debugPartner > 0)
+                {
+                    log.Add("");
+                    log.Add("============================================");
+                    log.Add($"=== DEBUG za partnerja {debugPartner} ===");
+                    log.Add("============================================");
+                    if (!vsiPartnerji.Contains(debugPartner))
+                    {
+                        log.Add($"Partner {debugPartner} NI v seznamu partnerjev za obračun.");
+                        log.Add("Razlog: nima nalogov, aktivnih pogodb in ročnih postavk za ta mesec.");
+                        var imaNaloge = ctx.Nalogi.Any(n => n.Partner == debugPartner);
+                        var imaPogodbo = ctx.AktivnePogodbe.Any(p => p.Partner == debugPartner);
+                        var imaRocno = ctx.RocnePostavke.Any(p => p.Partner == debugPartner);
+                        log.Add($"  - Ima naloge v ctx.Nalogi: {imaNaloge}");
+                        log.Add($"  - Ima aktivne pogodbe: {imaPogodbo}");
+                        log.Add($"  - Ima ročne postavke: {imaRocno}");
+                    }
+                    else if (debugPartnerObdelan && debugResult != null)
+                    {
+                        log.Add($"ImaPogodbo: {debugResult.ImaPogodbo}, LetnaPogodba: {debugResult.LetnaPogodba}");
+                        log.Add($"ImaNaloge: {debugResult.ImaNaloge}");
+                        log.Add($"MinuteNalogov: {debugResult.MinuteNalogov.SkupajMinut}, MinuteObracunane: {debugResult.MinuteObracunane}, MinuteNeobracunane: {debugResult.MinuteNeobracunane}, MinuteKoriscene: {debugResult.MinuteKoriscene}");
+                        log.Add($"MinutePredracuni: {debugResult.MinutePredracuni}, MinuteRocni: {debugResult.MinuteRocni}, MinutePogodbe: {debugResult.MinutePogodbe}, MinutePartnerMinute: {debugResult.MinutePartnerMinute}");
+                        log.Add("--- Opis obračuna ---");
+                        if (!string.IsNullOrEmpty(debugOpis))
+                        {
+                            foreach (var vrstica in debugOpis.Split('\n'))
+                                log.Add(vrstica.TrimEnd('\r'));
+                        }
+                        else
+                        {
+                            log.Add("(brez opisa)");
+                        }
+                    }
+                    else
+                    {
+                        log.Add("Partner je v seznamu, vendar ni bil obdelan (interna napaka).");
+                    }
+                    log.Add("============================================");
+                }
 
                 ShraniLog(db, mesec, leto, log);
                 return (true, $"Obračun uspešno izveden. Pripravljenih osnutkov: {vsiPartnerji.Count}.", vsiPartnerji.Count, log);
@@ -244,14 +362,34 @@ namespace ObracunDb.Services
         public (bool Success, string Message) IzvedObracunZaPartnerja(int mesec, int leto, int partner, HashSet<DateTime>? prazniki = null)
         {
             prazniki ??= new HashSet<DateTime>();
+            List<(int Index, double Ms, int? Rows, string Sql)>? sqlDebugEntries = null;
+            var sqlDebugIndex = 0;
+            Stopwatch? sqlDebugSw = null;
 
             try
             {
                 using var db = CreateDb();
+
+                // DEBUG: SQL tracing (samo Development/Visual Studio)
+                if (_environment.IsDevelopment())
+                {
+                    sqlDebugEntries = new();
+                    sqlDebugSw = Stopwatch.StartNew();
+                    db.TraceSwitchConnection = new TraceSwitch("debug", "debug") { Level = TraceLevel.Info };
+                    db.OnTraceConnection = info =>
+                    {
+                        if (info.TraceInfoStep == TraceInfoStep.AfterExecute)
+                        {
+                            sqlDebugIndex++;
+                            sqlDebugEntries.Add((sqlDebugIndex, info.ExecutionTime?.TotalMilliseconds ?? 0, info.RecordsAffected, info.SqlText ?? ""));
+                        }
+                    };
+                }
+
                 var log = new List<string>();
                 log.Add($"=== Ponovni obračun za partnerja {partner}, {mesec}/{leto} ===");
 
-                var ctx = NaloziPodatke(db, mesec, leto, log, prazniki);
+                var ctx = NaloziPodatke(db, mesec, leto, log, prazniki, samoPartner: partner);
 
                 // Pobriši samo postavke za tega partnerja (razen ročnih)
                 PripraviTabeleZaPartnerja(ctx, partner);
@@ -259,8 +397,14 @@ namespace ObracunDb.Services
                 // Obdelaj samo tega partnerja
                 var manjkajoceSifre = new HashSet<string>();
                 var partnerData = PripraviPodatkeZaPartnerja(ctx, partner);
+
                 var result = ObdelajPartnerja(ctx, partnerData, manjkajoceSifre);
+
                 ShraniOsnutek(ctx, result);
+
+                // V Development okolju zapiši podrobnosti obračuna v datoteko
+                if (_environment.IsDevelopment())
+                    ZapisiIzracunVDatoteko(db, ctx, result, partner, mesec, leto);
 
                 if (manjkajoceSifre.Count > 0)
                 {
@@ -273,6 +417,149 @@ namespace ObracunDb.Services
             catch (Exception ex)
             {
                 return (false, $"Napaka pri obračunu: {ex.Message}");
+            }
+            finally
+            {
+                if (sqlDebugEntries != null)
+                {
+                    sqlDebugSw?.Stop();
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"SQL DEBUG — Partner: {partner}, Mesec: {mesec}/{leto}");
+                    sb.AppendLine($"Datum: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+                    sb.AppendLine(new string('=', 80));
+                    sb.AppendLine();
+
+                    // Tabela padajoče po trajanju
+                    sb.AppendLine($"{"#",5} {"Trajanje (ms)",15} {"Vrstic",10}");
+                    sb.AppendLine($"{new string('-', 5),5} {new string('-', 15),15} {new string('-', 10),10}");
+                    foreach (var e in sqlDebugEntries.OrderByDescending(e => e.Ms))
+                        sb.AppendLine($"{e.Index,5} {e.Ms,15:F1} {(e.Rows.HasValue ? e.Rows.Value.ToString() : "n/a"),10}");
+                    sb.AppendLine($"{new string('-', 5),5} {new string('-', 15),15} {new string('-', 10),10}");
+                    sb.AppendLine($"{"SKUPAJ",-5} {sqlDebugSw?.ElapsedMilliseconds,15}");
+                    sb.AppendLine();
+
+                    // SQL podrobnosti
+                    foreach (var e in sqlDebugEntries)
+                    {
+                        sb.AppendLine($"--- #{e.Index} ({e.Ms:F1} ms, {(e.Rows.HasValue ? e.Rows.Value + " vrstic" : "n/a")}) ---");
+                        sb.AppendLine(e.Sql);
+                        sb.AppendLine();
+                    }
+
+                    try { File.WriteAllText(@"c:\vs\debug.txt", sb.ToString()); }
+                    catch { /* ignore */ }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Zapiše podrobnosti obračuna v izracun.txt (samo Development).
+        /// </summary>
+        private static void ZapisiIzracunVDatoteko(ObracunLinqDb db, ObracunContext ctx, PartnerObracunResult result, int partner, int mesec, int leto)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine("================================================================================");
+                sb.AppendLine($"IZRAČUN OBRAČUNA — Partner: {partner}, Mesec: {mesec}, Leto: {leto}");
+                sb.AppendLine($"Datum izračuna: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+                sb.AppendLine("================================================================================");
+                sb.AppendLine();
+
+                // 1) Celoten opis obdelave (predračuni, pogodbe, nalogi, dobroimetje, toleranca, servisne storitve)
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+                sb.AppendLine("PODROBNOSTI OBDELAVE");
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+                sb.AppendLine(result.Opis);
+                sb.AppendLine();
+
+                // 2) Povzetek minut
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+                sb.AppendLine("POVZETEK MINUT");
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+                sb.AppendLine($"Ima pogodbo:              {(result.ImaPogodbo ? "DA" : "NE")}");
+                if (result.ImaPogodbo)
+                    sb.AppendLine($"Letna pogodba:            {(result.LetnaPogodba ? "DA" : "NE")}");
+                sb.AppendLine($"Ima naloge:               {(result.ImaNaloge ? "DA" : "NE")}");
+                sb.AppendLine();
+                sb.AppendLine("Dobroimetje (minute v plus):");
+                sb.AppendLine($"  Predračuni:             {result.MinutePredracuni,6} min (skupno: {result.VseMinutePredracuni}, že porabljeno prej: {result.ZePorabljenePredracuni})");
+                sb.AppendLine($"  Ročno vnešene:          {result.MinuteRocni,6} min");
+                sb.AppendLine($"  Pogodbe:                {result.MinutePogodbe,6} min");
+                sb.AppendLine($"  Partner minute:         {result.MinutePartnerMinute,6} min (skupno: {result.VseMinutePartnerMinute}, že porabljeno prej: {result.ZePorabljenePartnerMinute})");
+                sb.AppendLine($"  ─────────────────────────────");
+                sb.AppendLine($"  SKUPAJ dobroimetje:     {result.MinuteVPlus,6} min");
+                sb.AppendLine();
+                sb.AppendLine("Minute nalogov:");
+                sb.AppendLine($"  Razdelitev:             {result.MinuteNalogov}");
+                sb.AppendLine($"  Obračunane (za zaračun):{result.MinuteObracunane,6} min");
+                sb.AppendLine($"  Neobračunane:           {result.MinuteNeobracunane,6} min");
+                sb.AppendLine($"  Koriščene (iz dobro.):  {result.MinuteKoriscene,6} min");
+                sb.AppendLine();
+
+                // 3) Končne postavke računa (OBRACUN_OSNUTEK_POS)
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+                sb.AppendLine("KONČNE POSTAVKE RAČUNA (OBRACUN_OSNUTEK_POS)");
+                sb.AppendLine("═══════════════════════════════════════════════════════════════════════════════");
+
+                var postavke = db.ObracunOsnutekPos
+                    .Where(p => p.Mesec == mesec && p.Leto == leto && p.Partner == partner)
+                    .OrderBy(p => p.Zs)
+                    .ToList();
+
+                if (postavke.Count == 0)
+                {
+                    sb.AppendLine("  (ni postavk)");
+                }
+                else
+                {
+                    sb.AppendLine($"  {"Zs",4} {"Tip",-8} {"Artikel",-12} {"Naziv",-35} {"Količina",10} {"Cena",10} {"Rabat",6} {"Vrednost",12}  {"Nalog/Pogodba"}");
+                    sb.AppendLine($"  {"----",4} {"--------",-8} {"------------",-12} {"-----------------------------------",-35} {"----------",10} {"----------",10} {"------",6} {"------------",12}  {"--------------"}");
+
+                    decimal skupnaVrednost = 0;
+                    foreach (var pos in postavke)
+                    {
+                        var kolicina = pos.Kolicina ?? 0;
+                        var cena = pos.Cena ?? 0;
+                        var rabat = pos.Rabat ?? 0;
+                        var vrednost = kolicina * cena * (1 - rabat / 100);
+                        skupnaVrednost += vrednost;
+
+                        var tipStr = pos.TipPostavke switch
+                        {
+                            TipPostavke.ROCNI => "ROČNI",
+                            TipPostavke.POGODBA => "POGODBA",
+                            TipPostavke.NALOG => "NALOG",
+                            _ => "?"
+                        };
+                        var naziv = (pos.Naziv ?? "").Trim();
+                        if (naziv.Length > 35) naziv = naziv.Substring(0, 35);
+
+                        var izvorStr = pos.TipPostavke switch
+                        {
+                            TipPostavke.NALOG when !string.IsNullOrEmpty(pos.NalogStevilka) => $"Nalog {pos.NalogStevilka}/{pos.NalogLeto}",
+                            TipPostavke.POGODBA when pos.PogodbaStevilka > 0 => $"Pogodba {pos.PogodbaStevilka}/{pos.PogodbaLeto}",
+                            _ => ""
+                        };
+
+                        sb.AppendLine($"  {pos.Zs,4} {tipStr,-8} {(pos.Artikel ?? ""),-12} {naziv,-35} {kolicina,10:N2} {cena,10:N2} {rabat,6:N1} {vrednost,12:N2}  {izvorStr}");
+                    }
+
+                    sb.AppendLine($"  {"",4} {"",8} {"",12} {"",35} {"",10} {"",10} {"",6} {"============",12}");
+                    sb.AppendLine($"  {"",4} {"",8} {"",12} {"SKUPAJ VREDNOST:",-35} {"",10} {"",10} {"",6} {skupnaVrednost,12:N2}");
+                    sb.AppendLine($"  Število postavk: {postavke.Count}");
+                }
+
+                sb.AppendLine();
+                sb.AppendLine("================================================================================");
+                sb.AppendLine("KONEC IZRAČUNA");
+                sb.AppendLine("================================================================================");
+
+                File.WriteAllText(@"c:\vs\obracundb\izracun.txt", sb.ToString(), Encoding.UTF8);
+            }
+            catch
+            {
+                // V Development okolju ne prekinjaj obračuna zaradi napake pri pisanju datoteke
             }
         }
 
@@ -304,7 +591,7 @@ namespace ObracunDb.Services
 
         #region Nalaganje podatkov
 
-        private ObracunContext NaloziPodatke(ObracunLinqDb db, int mesec, int leto, List<string> log, HashSet<DateTime> prazniki)
+        private ObracunContext NaloziPodatke(ObracunLinqDb db, int mesec, int leto, List<string> log, HashSet<DateTime> prazniki, int? samoPartner = null)
         {
             var prviDan = new DateTime(leto, mesec, 1);
             var zadnjiDan = prviDan.AddMonths(1).AddDays(-1);
@@ -315,8 +602,11 @@ namespace ObracunDb.Services
 
             // Nalogi za obračun (samo od leta 2026 naprej, brez že fakturiranih)
             // Fakturirana=0: se obračuna, Fakturirana=1: se ignorira, ostalo: se naloži, a ne obračuna
-            var nalogi = db.FaDnNalog
-                .Where(n => n.Leto >= 2026 && n.Fakturirana != 1 && n.Datum >= prviDan && n.Datum <= zadnjiDan)
+            var nalogiQuery = db.FaDnNalog
+                .Where(n => n.Leto >= 2026 && n.Fakturirana != 1 && n.Datum >= prviDan && n.Datum <= zadnjiDan);
+            if (samoPartner.HasValue)
+                nalogiQuery = nalogiQuery.Where(n => n.Partner == samoPartner.Value);
+            var nalogi = nalogiQuery
                 .OrderBy(n => n.Partner).ThenBy(n => n.Leto).ThenBy(n => n.Stevilka)
                 .ToList();
 
@@ -327,25 +617,40 @@ namespace ObracunDb.Services
 
             // Postavke nalogov
             var nalogiKljuci = nalogi.Select(n => (n.Stevilka, n.Leto)).ToHashSet();
-            var postavkeNalogov = db.FaDnNalogPoz.ToList().Where(pn => nalogiKljuci.Contains((pn.Stevilka, pn.Leto))).ToList();
+            var nalogiStevilke = nalogi.Select(n => n.Stevilka).Distinct().ToList();
+            var nalogiLeta = nalogi.Select(n => n.Leto).Distinct().ToList();
+            var postavkeNalogov = nalogiStevilke.Count > 0
+                ? db.FaDnNalogPoz
+                    .Where(pn => nalogiStevilke.Contains(pn.Stevilka) && nalogiLeta.Contains(pn.Leto))
+                    .ToList()
+                    .Where(pn => nalogiKljuci.Contains((pn.Stevilka, pn.Leto)))
+                    .ToList()
+                : new List<FaDnNalogPoz>();
 
             // Aktivne pogodbe
-            var aktivnePogodbe = db.FaPogodbe
-                .Where(p => (p.VeljaDo == null || p.VeljaDo >= prviDan) && (p.PrviRacunOd == null || p.PrviRacunOd <= zadnjiDan))
-                .ToList();
+            var pogodbeQuery = db.FaPogodbe
+                .Where(p => (p.VeljaDo == null || p.VeljaDo >= prviDan) && (p.PrviRacunOd == null || p.PrviRacunOd <= zadnjiDan));
+            if (samoPartner.HasValue)
+                pogodbeQuery = pogodbeQuery.Where(p => p.Partner == samoPartner.Value);
+            var aktivnePogodbe = pogodbeQuery.ToList();
 
             // Postavke pogodb
-            var postavkePogodb = (
+            var postavkePogodbeQuery = 
                 from poz in db.FaPogodbePoz
                 join ap in db.FaPogodbe on new { poz.Stevilka, poz.Leto } equals new { ap.Stevilka, ap.Leto }
                 where (ap.VeljaDo == null || ap.VeljaDo >= prviDan) && (ap.PrviRacunOd == null || ap.PrviRacunOd <= zadnjiDan)
-                select poz
+                select new { poz, ap.Partner };
+            var postavkePogodb = (samoPartner.HasValue
+                ? postavkePogodbeQuery.Where(x => x.Partner == samoPartner.Value).Select(x => x.poz)
+                : postavkePogodbeQuery.Select(x => x.poz)
             ).ToList();
 
             // Ročne postavke
-            var rocnePostavke = db.ObracunOsnutekPos
-                .Where(p => p.Mesec == mesec && p.Leto == leto && p.TipPostavke == TipPostavke.ROCNI)
-                .ToList();
+            var rocneQuery = db.ObracunOsnutekPos
+                .Where(p => p.Mesec == mesec && p.Leto == leto && p.TipPostavke == TipPostavke.ROCNI);
+            if (samoPartner.HasValue)
+                rocneQuery = rocneQuery.Where(p => p.Partner == samoPartner.Value);
+            var rocnePostavke = rocneQuery.ToList();
 
             // Artikli
             var artikli = db.FaArtikel.ToDictionary(
@@ -363,35 +668,41 @@ namespace ObracunDb.Services
             // 1. Naloži predračune z datumom od 1.1.2026 naprej do konca tekočega meseca
             var datumOd = new DateTime(2026, 1, 1);
             var datumDo = new DateTime(leto, mesec, 1).AddMonths(1).AddDays(-1);
-            var vsiPredracuni = db.FaPredracun
-                .Where(pr => pr.Datum >= datumOd && pr.Datum <= datumDo)
-                .ToList();
+            var predracuniQuery = db.FaPredracun
+                .Where(pr => pr.Datum >= datumOd && pr.Datum <= datumDo);
+            if (samoPartner.HasValue)
+                predracuniQuery = predracuniQuery.Where(pr => pr.SifraKupca == samoPartner.Value);
+            var vsiPredracuni = predracuniQuery.ToList();
 
             // 2. Naloži vsa plačila za te predračune
             var predracuniLeta = vsiPredracuni.Select(p => p.Leto).Distinct().ToList();
-            var sqlPlacila = @"
-                SELECT PREDRACUN_STEVILKA, PREDRACUN_LETO, SUM(ZNESEK + COALESCE(SCONTO, 0)) AS VSOTA
-                FROM FA_RACUN_PLACILO
-                WHERE PREDRACUN_STEVILKA IS NOT NULL 
-                  AND PREDRACUN_LETO IS NOT NULL 
-                  AND PREDRACUN_LETO IN (" + string.Join(",", predracuniLeta) + @")
-                GROUP BY PREDRACUN_STEVILKA, PREDRACUN_LETO
-                HAVING SUM(ZNESEK + COALESCE(SCONTO, 0)) > 0";
-            
             var placilaPoPredracunih = new Dictionary<(string Stevilka, int Leto), decimal>();
-            var cmdPlacila = db.Connection.CreateCommand();
-            cmdPlacila.CommandText = sqlPlacila;
 
-            using (var reader = cmdPlacila.ExecuteReader())
+            if (predracuniLeta.Count > 0)
             {
-                while (reader.Read())
+                var sqlPlacila = @"
+                    SELECT PREDRACUN_STEVILKA, PREDRACUN_LETO, SUM(ZNESEK + COALESCE(SCONTO, 0)) AS VSOTA
+                    FROM FA_RACUN_PLACILO
+                    WHERE PREDRACUN_STEVILKA IS NOT NULL 
+                      AND PREDRACUN_LETO IS NOT NULL 
+                      AND PREDRACUN_LETO IN (" + string.Join(",", predracuniLeta) + @")
+                    GROUP BY PREDRACUN_STEVILKA, PREDRACUN_LETO
+                    HAVING SUM(ZNESEK + COALESCE(SCONTO, 0)) > 0";
+
+                var cmdPlacila = db.Connection.CreateCommand();
+                cmdPlacila.CommandText = sqlPlacila;
+
+                using (var reader = cmdPlacila.ExecuteReader())
                 {
-                    if (!reader.IsDBNull(0) && !reader.IsDBNull(1) && !reader.IsDBNull(2))
+                    while (reader.Read())
                     {
-                        var prStevilka = reader.GetValue(0).ToString()!.Trim();
-                        var prLeto = Convert.ToInt32(reader.GetValue(1));
-                        var vsota = Convert.ToDecimal(reader.GetValue(2));
-                        placilaPoPredracunih[(prStevilka, prLeto)] = vsota;
+                        if (!reader.IsDBNull(0) && !reader.IsDBNull(1) && !reader.IsDBNull(2))
+                        {
+                            var prStevilka = reader.GetValue(0).ToString()!.Trim();
+                            var prLeto = Convert.ToInt32(reader.GetValue(1));
+                            var vsota = Convert.ToDecimal(reader.GetValue(2));
+                            placilaPoPredracunih[(prStevilka, prLeto)] = vsota;
+                        }
                     }
                 }
             }
@@ -409,18 +720,45 @@ namespace ObracunDb.Services
 
             // Postavke predračunov
             var predracuniKljuci = predracuni.Select(p => (p.Stevilka, p.Leto)).ToHashSet();
-            var postavkePredracunov = db.FaPredracunKnjizba.ToList()
-                .Where(pk => predracuniKljuci.Contains((pk.Stevilka, pk.Leto)))
-                .ToList();
+            var predracuniStevilke = predracuni.Select(p => p.Stevilka).Distinct().ToList();
+            var predracuniLeta2 = predracuni.Select(p => p.Leto).Distinct().ToList();
+            var postavkePredracunov = predracuniStevilke.Count > 0
+                ? db.FaPredracunKnjizba
+                    .Where(pk => predracuniStevilke.Contains(pk.Stevilka) && predracuniLeta2.Contains(pk.Leto))
+                    .ToList()
+                    .Where(pk => predracuniKljuci.Contains((pk.Stevilka, pk.Leto)))
+                    .ToList()
+                : new List<FaPredracunKnjizba>();
 
             // Minute artiklov
             var minuteArtiklov = db.ObracunPaketMinute.ToDictionary(m => m.Artikel, m => m.Minut);
 
 
             // OBRACUN_DN slovar
-            var obracunDnSlovar = db.ObracunDn.ToList()
-                .Where(o => nalogiKljuci.Contains((o.Stevilka, o.Leto)))
-                .ToDictionary(o => (o.Stevilka, o.Leto));
+            Dictionary<(string, int), ObracunDn> obracunDnSlovar;
+            if (nalogiStevilke.Count == 0)
+            {
+                obracunDnSlovar = new Dictionary<(string, int), ObracunDn>();
+            }
+            else if (samoPartner.HasValue)
+            {
+                // Za enega partnerja: JOIN z FA_DN_NALOG za filtriranje po partnerju
+                obracunDnSlovar = (from o in db.ObracunDn
+                    join n in db.FaDnNalog on new { o.Stevilka, o.Leto } equals new { n.Stevilka, n.Leto }
+                    where n.Partner == samoPartner.Value
+                        && n.Leto >= 2026 && n.Fakturirana != 1
+                        && n.Datum >= prviDan && n.Datum <= zadnjiDan
+                    select o)
+                    .ToDictionary(o => (o.Stevilka, o.Leto));
+            }
+            else
+            {
+                obracunDnSlovar = db.ObracunDn
+                    .Where(o => nalogiStevilke.Contains(o.Stevilka) && nalogiLeta.Contains(o.Leto))
+                    .ToList()
+                    .Where(o => nalogiKljuci.Contains((o.Stevilka, o.Leto)))
+                    .ToDictionary(o => (o.Stevilka, o.Leto));
+            }
 
             // šifra artikla za kilometrino
             var sifraKilometrina = _parametri.GetString(ObracunParam.SifraKilometrina) ?? "";
@@ -450,6 +788,28 @@ namespace ObracunDb.Services
                 PogodbaP22_7 = _parametri.GetString(ObracunParam.ServisnaPogodbaP22_7) ?? ""
             };
 
+            var terenServisneNastavitve = new ServisneNastavitve
+            {
+                BrezPogodbeDel7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeDel7_16) ?? "",
+                BrezPogodbeDel16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeDel16_22) ?? "",
+                BrezPogodbeDel22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeDel22_7) ?? "",
+                BrezPogodbeVik7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeVik7_16) ?? "",
+                BrezPogodbeVik16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeVik16_22) ?? "",
+                BrezPogodbeVik22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeVik22_7) ?? "",
+                BrezPogodbeP7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeP7_16) ?? "",
+                BrezPogodbeP16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeP16_22) ?? "",
+                BrezPogodbeP22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaBrezPogodbeP22_7) ?? "",
+                PogodbaDel7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaDel7_16) ?? "",
+                PogodbaDel16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaDel16_22) ?? "",
+                PogodbaDel22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaDel22_7) ?? "",
+                PogodbaVik7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaVik7_16) ?? "",
+                PogodbaVik16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaVik16_22) ?? "",
+                PogodbaVik22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaVik22_7) ?? "",
+                PogodbaP7_16 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaP7_16) ?? "",
+                PogodbaP16_22 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaP16_22) ?? "",
+                PogodbaP22_7 = _parametri.GetString(ObracunParam.Teren_ServisnaPogodbaP22_7) ?? ""
+            };
+
             var popustPogodbe = (decimal)_parametri.GetInt(ObracunParam.ProcentPopustaPogodbe);
             if (popustPogodbe > 0)
                 log.Add($"Popust pogodbe: {popustPogodbe}%");
@@ -459,45 +819,68 @@ namespace ObracunDb.Services
                 log.Add($"Toleranca minut: {tolerancaMinut}");
 
             // PARTNER_MINUTE - naloži minute partnerjev, ki so veljavne za tekoči mesec/leto obračuna
-            var partnerMinute = db.ObracunMinute
-                .Where(m => m.ZacetekMesec != null && m.ZacetekLeto != null && m.VeljavnostMesecih > 0)
+            var partnerMinuteQuery = db.ObracunMinute
+                .Where(m => m.ZacetekMesec != null && m.ZacetekLeto != null && m.VeljavnostMesecih > 0);
+            if (samoPartner.HasValue)
+                partnerMinuteQuery = partnerMinuteQuery.Where(m => m.Partner == samoPartner.Value);
+            var partnerMinute = partnerMinuteQuery
                 .ToList()
                 .Where(m => JeVeljavnaMinuta(m, mesec, leto))
                 .ToList();
 
             // Preberi Že porabljene minute iz OBRACUN_PORABA_MINUT (agregirano po ID_OBRACUN_MINUTE)            // Beremo samo pretekle mesece (mesec/leto strogo manjši od tekočega)
-            var zePorabljenePartnerMinute = db.ObracunPorabaMinut
-                .Where(p => p.IdObracunMinute != null && p.Tip == TipPorabeMinut.PartnerMinute && (p.Leto < leto || (p.Leto == leto && p.Mesec < mesec)))
+            var zePorabljeneQuery = db.ObracunPorabaMinut
+                .Where(p => p.IdObracunMinute != null && p.Tip == TipPorabeMinut.PartnerMinute && (p.Leto < leto || (p.Leto == leto && p.Mesec < mesec)));
+            if (samoPartner.HasValue)
+                zePorabljeneQuery = zePorabljeneQuery.Where(p => p.Partner == samoPartner.Value);
+            var zePorabljenePartnerMinute = zePorabljeneQuery
                 .GroupBy(p => p.IdObracunMinute!.Value)
                 .Select(g => new { IdObracunMinute = g.Key, SkupajPorabljeno = g.Sum(x => x.Kolicina) })
                 .ToDictionary(x => x.IdObracunMinute, x => x.SkupajPorabljeno);
 
             // Preberi Že porabljene minute iz predračunov (mesec/leto strogo manjši od tekočega)
-            var zePorabljenePredracuni = db.ObracunPorabaMinut
-                .Where(p => p.PredracunStevilka != null && p.PredracunLeto != null && p.Tip == TipPorabeMinut.Predracun && (p.Leto < leto || (p.Leto == leto && p.Mesec < mesec)))
+            var zePorabljenePrQuery = db.ObracunPorabaMinut
+                .Where(p => p.PredracunStevilka != null && p.PredracunLeto != null && p.Tip == TipPorabeMinut.Predracun && (p.Leto < leto || (p.Leto == leto && p.Mesec < mesec)));
+            if (samoPartner.HasValue)
+                zePorabljenePrQuery = zePorabljenePrQuery.Where(p => p.Partner == samoPartner.Value);
+            var zePorabljenePredracuni = zePorabljenePrQuery
                 .GroupBy(p => new { p.PredracunStevilka, p.PredracunLeto })
                 .Select(g => new { g.Key.PredracunStevilka, g.Key.PredracunLeto, SkupajPorabljeno = g.Sum(x => x.Kolicina) })
                 .ToDictionary(x => (x.PredracunStevilka!, x.PredracunLeto!.Value), x => x.SkupajPorabljeno);
 
             // Partnerji s pogodbo v prihodnosti (nimajo aktivne pogodbe, a imajo pogodbo, ki začne veljati po tekočem mesecu)
             var aktivniPartnerji = aktivnePogodbe.Select(p => p.Partner).Distinct().ToHashSet();
-            var partnerjiSPrihodnjoPogodbo = db.FaPogodbe
-                .Where(p => p.PrviRacunOd != null && p.PrviRacunOd > zadnjiDan
-                    && (p.VeljaDo == null || p.VeljaDo > zadnjiDan))
-                .ToList()
-                .Where(p => !aktivniPartnerji.Contains(p.Partner))
-                .Select(p => p.Partner)
-                .Distinct()
-                .ToHashSet();
+            HashSet<int> partnerjiSPrihodnjoPogodbo;
+            if (samoPartner.HasValue)
+            {
+                var imaPrihodnjo = !aktivniPartnerji.Contains(samoPartner.Value) && db.FaPogodbe
+                    .Any(p => p.Partner == samoPartner.Value && p.PrviRacunOd != null && p.PrviRacunOd > zadnjiDan
+                        && (p.VeljaDo == null || p.VeljaDo > zadnjiDan));
+                partnerjiSPrihodnjoPogodbo = imaPrihodnjo ? new HashSet<int> { samoPartner.Value } : new HashSet<int>();
+            }
+            else
+            {
+                partnerjiSPrihodnjoPogodbo = db.FaPogodbe
+                    .Where(p => p.PrviRacunOd != null && p.PrviRacunOd > zadnjiDan
+                        && (p.VeljaDo == null || p.VeljaDo > zadnjiDan))
+                    .ToList()
+                    .Where(p => !aktivniPartnerji.Contains(p.Partner))
+                    .Select(p => p.Partner)
+                    .Distinct()
+                    .ToHashSet();
+            }
 
             // Povezave nalog → predračuni (iz OBRACUN_DN_PREDRACUN)
-            var nalogPredracunPovezave = db.ObracunDnPredracun
-                .ToList()
-                .Where(p => nalogiKljuci.Contains((p.Stevilka, p.Leto)))
-                .GroupBy(p => (p.Stevilka, p.Leto))
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Select(p => (p.PredracunStevilka, p.PredracunLeto)).ToHashSet());
+            var nalogPredracunPovezave = nalogiStevilke.Count > 0
+                ? db.ObracunDnPredracun
+                    .Where(p => nalogiStevilke.Contains(p.Stevilka) && nalogiLeta.Contains(p.Leto))
+                    .ToList()
+                    .Where(p => nalogiKljuci.Contains((p.Stevilka, p.Leto)))
+                    .GroupBy(p => (p.Stevilka, p.Leto))
+                    .ToDictionary(
+                        g => g.Key,
+                        g => g.Select(p => (p.PredracunStevilka, p.PredracunLeto)).ToHashSet())
+                : new Dictionary<(string, int), HashSet<(string, int)>>();
 
             return new ObracunContext
             {
@@ -519,6 +902,7 @@ namespace ObracunDb.Services
                 PartnerMinute = partnerMinute,
                 SifraKilometrina = sifraKilometrina,
                 ServisneNastavitve = servisneNastavitve,
+                TerenServisneNastavitve = terenServisneNastavitve,
                 PopustPogodbe = popustPogodbe,
                 TolerancaMinut = tolerancaMinut,
                 Prazniki = prazniki,
@@ -981,7 +1365,9 @@ namespace ObracunDb.Services
             var skupnaRazdelitev = new MinuteRazdelitev();
             var obracunaneRazdelitev = new MinuteRazdelitev(); // Samo minute ki se obračunajo
             var obveznoRazdelitev = new MinuteRazdelitev(); // Minute iz nalogov z ObveznoZaracunaj (ne odštevaj dobroimetja)
-            int minuteObracunane = 0; // Bruto minute, ki se naj bi obračunale (pred odštetjem dobroimetja)
+            var terenskaRazdelitev = new MinuteRazdelitev(); // Minute iz terenskih nalogov ki se obračunajo (ne koristijo pogodb)
+            var obveznoTerenskaRazdelitev = new MinuteRazdelitev(); // Minute iz terenskih ObveznoZaracunaj nalogov
+            int minuteObracunane = 0;
             int minuteNeobracunane = 0;
             int minuteKoriscene = 0; // Dobroimetje, ki se odšteje (pogodbe, predračuni, ročno, partner_minute)
             bool imaPogodbo = data.Pogodbe.Count > 0 || ctx.PartnerjiSPrihodnjoPogodbo.Contains(data.Partner);
@@ -1058,6 +1444,10 @@ namespace ObracunDb.Services
                     var jeHelpdesk = nalog.Stevilka.Length == 7 && nalog.Stevilka.StartsWith("1");
                     if (jeHelpdesk)
                         imaHelpdeskNalogeZaObracun = true;
+                    else if (jeObveznoZaracunaj)
+                        obveznoTerenskaRazdelitev.Pristej(razdelitevNaloga);
+                    else
+                        terenskaRazdelitev.Pristej(razdelitevNaloga);
                 }
                 else
                 {
@@ -1164,66 +1554,272 @@ namespace ObracunDb.Services
 
                 if (data.Partner != 23900)
                 {
-                    // Odštej dobroimetje (predračuni, ročni, pogodbe) od delavniškiih minut
-                    // ObveznoZaracunaj minute se ne odštevajo - izloči jih pred odštetjem
-                    var preostaleMinuteVPlus = minuteVPlus;
+                    // Odštej dobroimetje od delavniških minut
+                    // Terenski nalogi NE koristijo dobroimetja iz pogodb (samo predračune, ročno, partner_minute)
+                    var kreditiPogodb = imaHelpdeskNalogeZaObracun ? minutePogodbe : 0;
+                    var kreditiBrezPogodb = minuteVPlus - kreditiPogodb;
 
                     // Delavnik - dnevna (7-16)
-                    var delavnikDnevnaZaObracun = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna;
-                    if (preostaleMinuteVPlus > 0 && delavnikDnevnaZaObracun > 0)
+                    var helpdeskDnevna = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna - terenskaRazdelitev.Delavnik_Dnevna;
+                    var terenskaDnevna = terenskaRazdelitev.Delavnik_Dnevna;
+                    if (kreditiBrezPogodb > 0 && helpdeskDnevna > 0)
                     {
-                        var odsteto = Math.Min(delavnikDnevnaZaObracun, preostaleMinuteVPlus);
-                        delavnikDnevnaZaObracun -= odsteto;
-                        preostaleMinuteVPlus -= odsteto;
-                        minuteKoriscene += odsteto;
+                        var odsteto = Math.Min(helpdeskDnevna, kreditiBrezPogodb);
+                        helpdeskDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                     }
+                    if (kreditiPogodb > 0 && helpdeskDnevna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskDnevna, kreditiPogodb);
+                        helpdeskDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaDnevna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaDnevna, kreditiBrezPogodb);
+                        terenskaDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var delavnikDnevnaZaObracun = helpdeskDnevna + terenskaDnevna;
 
                     // Delavnik - popoldanska (16-22)
-                    var delavnikPopoldanskaZaObracun = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska;
-                    if (preostaleMinuteVPlus > 0 && delavnikPopoldanskaZaObracun > 0)
+                    var helpdeskPopoldanska = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska - terenskaRazdelitev.Delavnik_Popoldanska;
+                    var terenskaPopoldanska = terenskaRazdelitev.Delavnik_Popoldanska;
+                    if (kreditiBrezPogodb > 0 && helpdeskPopoldanska > 0)
                     {
-                        var odsteto = Math.Min(delavnikPopoldanskaZaObracun, preostaleMinuteVPlus);
-                        delavnikPopoldanskaZaObracun -= odsteto;
-                        preostaleMinuteVPlus -= odsteto;
-                        minuteKoriscene += odsteto;
+                        var odsteto = Math.Min(helpdeskPopoldanska, kreditiBrezPogodb);
+                        helpdeskPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                     }
+                    if (kreditiPogodb > 0 && helpdeskPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPopoldanska, kreditiPogodb);
+                        helpdeskPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(terenskaPopoldanska, kreditiBrezPogodb);
+                        terenskaPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var delavnikPopoldanskaZaObracun = helpdeskPopoldanska + terenskaPopoldanska;
 
                     // Delavnik - nočna (22-7)
-                    var delavnikNocnaZaObracun = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna;
-                    if (preostaleMinuteVPlus > 0 && delavnikNocnaZaObracun > 0)
+                    var helpdeskNocna = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna - terenskaRazdelitev.Delavnik_Nocna;
+                    var terenskaNocna = terenskaRazdelitev.Delavnik_Nocna;
+                    if (kreditiBrezPogodb > 0 && helpdeskNocna > 0)
                     {
-                        var odsteto = Math.Min(delavnikNocnaZaObracun, preostaleMinuteVPlus);
-                        delavnikNocnaZaObracun -= odsteto;
-                        preostaleMinuteVPlus -= odsteto;
-                        minuteKoriscene += odsteto;
+                        var odsteto = Math.Min(helpdeskNocna, kreditiBrezPogodb);
+                        helpdeskNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                     }
+                    if (kreditiPogodb > 0 && helpdeskNocna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskNocna, kreditiPogodb);
+                        helpdeskNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaNocna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaNocna, kreditiBrezPogodb);
+                        terenskaNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var delavnikNocnaZaObracun = helpdeskNocna + terenskaNocna;
 
                     // Prištej obvezne minute nazaj (ObveznoZaracunaj - ne gredo skozi dobroimetje)
                     delavnikDnevnaZaObracun += obveznoRazdelitev.Delavnik_Dnevna;
                     delavnikPopoldanskaZaObracun += obveznoRazdelitev.Delavnik_Popoldanska;
                     delavnikNocnaZaObracun += obveznoRazdelitev.Delavnik_Nocna;
 
-                    // Delavnik (z odštetim dobroimetjem)
-                    // Vikend in Praznik (brez odštevanja dobroimetja)
-                    // Uporabi toleranco minut
-                    var (tDel7_16, tDel16_22, tDel22_7, tVik7_16, tVik16_22, tVik22_7, tPra7_16, tPra16_22, tPra22_7) = 
+                    // Vikend - dnevna (7-16)
+                    var helpdeskVikDnevna = obracunaneRazdelitev.Vikend_Dnevna - obveznoRazdelitev.Vikend_Dnevna - terenskaRazdelitev.Vikend_Dnevna;
+                    var terenskaVikDnevna = terenskaRazdelitev.Vikend_Dnevna;
+                    if (kreditiBrezPogodb > 0 && helpdeskVikDnevna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikDnevna, kreditiBrezPogodb);
+                        helpdeskVikDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskVikDnevna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikDnevna, kreditiPogodb);
+                        helpdeskVikDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaVikDnevna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaVikDnevna, kreditiBrezPogodb);
+                        terenskaVikDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var vikendDnevnaZaObracun = helpdeskVikDnevna + terenskaVikDnevna + obveznoRazdelitev.Vikend_Dnevna;
+
+                    // Vikend - popoldanska (16-22)
+                    var helpdeskVikPopoldanska = obracunaneRazdelitev.Vikend_Popoldanska - obveznoRazdelitev.Vikend_Popoldanska - terenskaRazdelitev.Vikend_Popoldanska;
+                    var terenskaVikPopoldanska = terenskaRazdelitev.Vikend_Popoldanska;
+                    if (kreditiBrezPogodb > 0 && helpdeskVikPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikPopoldanska, kreditiBrezPogodb);
+                        helpdeskVikPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskVikPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikPopoldanska, kreditiPogodb);
+                        helpdeskVikPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaVikPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(terenskaVikPopoldanska, kreditiBrezPogodb);
+                        terenskaVikPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var vikendPopoldanskaZaObracun = helpdeskVikPopoldanska + terenskaVikPopoldanska + obveznoRazdelitev.Vikend_Popoldanska;
+
+                    // Vikend - nočna (22-7)
+                    var helpdeskVikNocna = obracunaneRazdelitev.Vikend_Nocna - obveznoRazdelitev.Vikend_Nocna - terenskaRazdelitev.Vikend_Nocna;
+                    var terenskaVikNocna = terenskaRazdelitev.Vikend_Nocna;
+                    if (kreditiBrezPogodb > 0 && helpdeskVikNocna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikNocna, kreditiBrezPogodb);
+                        helpdeskVikNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskVikNocna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskVikNocna, kreditiPogodb);
+                        helpdeskVikNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaVikNocna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaVikNocna, kreditiBrezPogodb);
+                        terenskaVikNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var vikendNocnaZaObracun = helpdeskVikNocna + terenskaVikNocna + obveznoRazdelitev.Vikend_Nocna;
+
+                    // Praznik - dnevna (7-16)
+                    var helpdeskPraDnevna = obracunaneRazdelitev.Praznik_Dnevna - obveznoRazdelitev.Praznik_Dnevna - terenskaRazdelitev.Praznik_Dnevna;
+                    var terenskaPraDnevna = terenskaRazdelitev.Praznik_Dnevna;
+                    if (kreditiBrezPogodb > 0 && helpdeskPraDnevna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraDnevna, kreditiBrezPogodb);
+                        helpdeskPraDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskPraDnevna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraDnevna, kreditiPogodb);
+                        helpdeskPraDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaPraDnevna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaPraDnevna, kreditiBrezPogodb);
+                        terenskaPraDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var praznikDnevnaZaObracun = helpdeskPraDnevna + terenskaPraDnevna + obveznoRazdelitev.Praznik_Dnevna;
+
+                    // Praznik - popoldanska (16-22)
+                    var helpdeskPraPopoldanska = obracunaneRazdelitev.Praznik_Popoldanska - obveznoRazdelitev.Praznik_Popoldanska - terenskaRazdelitev.Praznik_Popoldanska;
+                    var terenskaPraPopoldanska = terenskaRazdelitev.Praznik_Popoldanska;
+                    if (kreditiBrezPogodb > 0 && helpdeskPraPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraPopoldanska, kreditiBrezPogodb);
+                        helpdeskPraPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskPraPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraPopoldanska, kreditiPogodb);
+                        helpdeskPraPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaPraPopoldanska > 0)
+                    {
+                        var odsteto = Math.Min(terenskaPraPopoldanska, kreditiBrezPogodb);
+                        terenskaPraPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    var praznikPopoldanskaZaObracun = helpdeskPraPopoldanska + terenskaPraPopoldanska + obveznoRazdelitev.Praznik_Popoldanska;
+
+                    // Praznik - nočna (22-7)
+                    var helpdeskPraNocna = obracunaneRazdelitev.Praznik_Nocna - obveznoRazdelitev.Praznik_Nocna - terenskaRazdelitev.Praznik_Nocna;
+                    var terenskaPraNocna = terenskaRazdelitev.Praznik_Nocna;
+                    if (kreditiBrezPogodb > 0 && helpdeskPraNocna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraNocna, kreditiBrezPogodb);
+                        helpdeskPraNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiPogodb > 0 && helpdeskPraNocna > 0)
+                    {
+                        var odsteto = Math.Min(helpdeskPraNocna, kreditiPogodb);
+                        helpdeskPraNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    if (kreditiBrezPogodb > 0 && terenskaPraNocna > 0)
+                    {
+                        var odsteto = Math.Min(terenskaPraNocna, kreditiBrezPogodb);
+                        terenskaPraNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                    }
+                    // HD skupne minute: helpdesk + obvezno helpdesk
+                    var hdDel7_16 = helpdeskDnevna + obveznoRazdelitev.Delavnik_Dnevna - obveznoTerenskaRazdelitev.Delavnik_Dnevna;
+                    var hdDel16_22 = helpdeskPopoldanska + obveznoRazdelitev.Delavnik_Popoldanska - obveznoTerenskaRazdelitev.Delavnik_Popoldanska;
+                    var hdDel22_7 = helpdeskNocna + obveznoRazdelitev.Delavnik_Nocna - obveznoTerenskaRazdelitev.Delavnik_Nocna;
+                    var hdVik7_16 = helpdeskVikDnevna + obveznoRazdelitev.Vikend_Dnevna - obveznoTerenskaRazdelitev.Vikend_Dnevna;
+                    var hdVik16_22 = helpdeskVikPopoldanska + obveznoRazdelitev.Vikend_Popoldanska - obveznoTerenskaRazdelitev.Vikend_Popoldanska;
+                    var hdVik22_7 = helpdeskVikNocna + obveznoRazdelitev.Vikend_Nocna - obveznoTerenskaRazdelitev.Vikend_Nocna;
+                    var hdPra7_16 = helpdeskPraDnevna + obveznoRazdelitev.Praznik_Dnevna - obveznoTerenskaRazdelitev.Praznik_Dnevna;
+                    var hdPra16_22 = helpdeskPraPopoldanska + obveznoRazdelitev.Praznik_Popoldanska - obveznoTerenskaRazdelitev.Praznik_Popoldanska;
+                    var hdPra22_7 = helpdeskPraNocna + obveznoRazdelitev.Praznik_Nocna - obveznoTerenskaRazdelitev.Praznik_Nocna;
+
+                    // Teren skupne minute: terenski + obvezno terenski
+                    var terenDel7_16 = terenskaDnevna + obveznoTerenskaRazdelitev.Delavnik_Dnevna;
+                    var terenDel16_22 = terenskaPopoldanska + obveznoTerenskaRazdelitev.Delavnik_Popoldanska;
+                    var terenDel22_7 = terenskaNocna + obveznoTerenskaRazdelitev.Delavnik_Nocna;
+                    var terenVik7_16 = terenskaVikDnevna + obveznoTerenskaRazdelitev.Vikend_Dnevna;
+                    var terenVik16_22 = terenskaVikPopoldanska + obveznoTerenskaRazdelitev.Vikend_Popoldanska;
+                    var terenVik22_7 = terenskaVikNocna + obveznoTerenskaRazdelitev.Vikend_Nocna;
+                    var terenPra7_16 = terenskaPraDnevna + obveznoTerenskaRazdelitev.Praznik_Dnevna;
+                    var terenPra16_22 = terenskaPraPopoldanska + obveznoTerenskaRazdelitev.Praznik_Popoldanska;
+                    var terenPra22_7 = terenskaPraNocna + obveznoTerenskaRazdelitev.Praznik_Nocna;
+
+                    // Uporabi toleranco minut - HD
+                    var (tHdDel7_16, tHdDel16_22, tHdDel22_7, tHdVik7_16, tHdVik16_22, tHdVik22_7, tHdPra7_16, tHdPra16_22, tHdPra22_7) = 
                         UpostevajiToleranco(ctx.TolerancaMinut,
-                            delavnikDnevnaZaObracun, delavnikPopoldanskaZaObracun, delavnikNocnaZaObracun,
-                            obracunaneRazdelitev.Vikend_Dnevna, obracunaneRazdelitev.Vikend_Popoldanska, obracunaneRazdelitev.Vikend_Nocna,
-                            obracunaneRazdelitev.Praznik_Dnevna, obracunaneRazdelitev.Praznik_Popoldanska, obracunaneRazdelitev.Praznik_Nocna,
+                            hdDel7_16, hdDel16_22, hdDel22_7,
+                            hdVik7_16, hdVik16_22, hdVik22_7,
+                            hdPra7_16, hdPra16_22, hdPra22_7,
                             opis, data.Partner, ctx.Log);
 
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tDel7_16, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tDel16_22, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tDel22_7, opis, ref naslednjZs, manjkajoceSifre);
+                    // Uporabi toleranco minut - Teren
+                    var (tTerenDel7_16, tTerenDel16_22, tTerenDel22_7, tTerenVik7_16, tTerenVik16_22, tTerenVik22_7, tTerenPra7_16, tTerenPra16_22, tTerenPra22_7) = 
+                        UpostevajiToleranco(ctx.TolerancaMinut,
+                            terenDel7_16, terenDel16_22, terenDel22_7,
+                            terenVik7_16, terenVik16_22, terenVik22_7,
+                            terenPra7_16, terenPra16_22, terenPra22_7,
+                            opis, data.Partner, ctx.Log);
 
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tVik7_16, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tVik16_22, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tVik22_7, opis, ref naslednjZs, manjkajoceSifre);
+                    if (data.Partner == 428000)
+                    {
+                        opis.AppendLine($"   DEBUG (brez pogodbe): TolerancaMinut={ctx.TolerancaMinut}, kreditiBrezPogodb={kreditiBrezPogodb}, kreditiPogodb={kreditiPogodb}");
+                        opis.AppendLine($"   DEBUG HD pred toleranco:  Del 7-16={hdDel7_16}, 16-22={hdDel16_22}, 22-7={hdDel22_7} | Vik={hdVik7_16}/{hdVik16_22}/{hdVik22_7} | Pra={hdPra7_16}/{hdPra16_22}/{hdPra22_7}");
+                        opis.AppendLine($"   DEBUG HD po toleranci:    Del 7-16={tHdDel7_16}, 16-22={tHdDel16_22}, 22-7={tHdDel22_7} | Vik={tHdVik7_16}/{tHdVik16_22}/{tHdVik22_7} | Pra={tHdPra7_16}/{tHdPra16_22}/{tHdPra22_7}");
+                        opis.AppendLine($"   DEBUG Teren pred tol:     Del 7-16={terenDel7_16}, 16-22={terenDel16_22}, 22-7={terenDel22_7} | Vik={terenVik7_16}/{terenVik16_22}/{terenVik22_7} | Pra={terenPra7_16}/{terenPra16_22}/{terenPra22_7}");
+                        opis.AppendLine($"   DEBUG Teren po tol:       Del 7-16={tTerenDel7_16}, 16-22={tTerenDel16_22}, 22-7={tTerenDel22_7} | Vik={tTerenVik7_16}/{tTerenVik16_22}/{tTerenVik22_7} | Pra={tTerenPra7_16}/{tTerenPra16_22}/{tTerenPra22_7}");
+                        opis.AppendLine($"   DEBUG ŠIFRE HD:    Del 7-16='{ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Dnevna)}', 16-22='{ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Popoldanska)}', 22-7='{ctx.ServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Nocna)}'");
+                        opis.AppendLine($"   DEBUG ŠIFRE Teren: Del 7-16='{ctx.TerenServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Dnevna)}', 16-22='{ctx.TerenServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Popoldanska)}', 22-7='{ctx.TerenServisneNastavitve.GetSifraBrezPogodbe(TipDneva.Delavnik, CasovnaTarifa.Nocna)}'");
+                    }
 
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tPra7_16, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tPra16_22, opis, ref naslednjZs, manjkajoceSifre);
-                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tPra22_7, opis, ref naslednjZs, manjkajoceSifre);
+                    // HD postavke (HD Servisna šifre artiklov)
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tHdDel7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tHdDel16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tHdDel22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tHdVik7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tHdVik16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tHdVik22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tHdPra7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tHdPra16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tHdPra22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+
+                    // Teren postavke (Teren Servisna šifre artiklov)
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tTerenDel7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tTerenDel16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tTerenDel22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tTerenVik7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tTerenVik16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tTerenVik22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tTerenPra7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tTerenPra16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                    UstvariPostavkoBrezPogodbe(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tTerenPra22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve, "Teren");
+                }
+                else
+                {
+                    opis.AppendLine($"   ! PRESKOČENO: partner == 23900 (interni) – ne ustvari servisnih postavk");
                 }
             }
 
@@ -1233,68 +1829,257 @@ namespace ObracunDb.Services
                 opis.AppendLine();
                 opis.AppendLine($"--- Obračun servisnih storitev (pogodba, popust {ctx.PopustPogodbe}%) ---");
 
-                // Odštej dobroimetje (predračuni, ročni, pogodbe) od delavniškiih minut
-                // ObveznoZaracunaj minute se ne odštevajo - izloči jih pred odštetjem
-                var preostaleMinuteVPlus = minuteVPlus;
+                // Odštej dobroimetje od delavniških minut
+                // Terenski nalogi NE koristijo dobroimetja iz pogodb (samo predračune, ročno, partner_minute)
+                var kreditiPogodb = imaHelpdeskNalogeZaObracun ? minutePogodbe : 0;
+                var kreditiBrezPogodb = minuteVPlus - kreditiPogodb;
 
                 // Delavnik - dnevna (7-16)
-                var delavnikDnevnaZaObracun = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna;
-                if (preostaleMinuteVPlus > 0 && delavnikDnevnaZaObracun > 0)
+                var helpdeskDnevna = obracunaneRazdelitev.Delavnik_Dnevna - obveznoRazdelitev.Delavnik_Dnevna - terenskaRazdelitev.Delavnik_Dnevna;
+                var terenskaDnevna = terenskaRazdelitev.Delavnik_Dnevna;
+                if (kreditiBrezPogodb > 0 && helpdeskDnevna > 0)
                 {
-                    var odsteto = Math.Min(delavnikDnevnaZaObracun, preostaleMinuteVPlus);
-                    delavnikDnevnaZaObracun -= odsteto;
-                    preostaleMinuteVPlus -= odsteto;
-                    minuteKoriscene += odsteto;
+                    var odsteto = Math.Min(helpdeskDnevna, kreditiBrezPogodb);
+                    helpdeskDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                 }
+                if (kreditiPogodb > 0 && helpdeskDnevna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskDnevna, kreditiPogodb);
+                    helpdeskDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaDnevna > 0)
+                {
+                    var odsteto = Math.Min(terenskaDnevna, kreditiBrezPogodb);
+                    terenskaDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var delavnikDnevnaZaObracun = helpdeskDnevna + terenskaDnevna;
 
                 // Delavnik - popoldanska (16-22)
-                var delavnikPopoldanskaZaObracun = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska;
-                if (preostaleMinuteVPlus > 0 && delavnikPopoldanskaZaObracun > 0)
+                var helpdeskPopoldanska = obracunaneRazdelitev.Delavnik_Popoldanska - obveznoRazdelitev.Delavnik_Popoldanska - terenskaRazdelitev.Delavnik_Popoldanska;
+                var terenskaPopoldanska = terenskaRazdelitev.Delavnik_Popoldanska;
+                if (kreditiBrezPogodb > 0 && helpdeskPopoldanska > 0)
                 {
-                    var odsteto = Math.Min(delavnikPopoldanskaZaObracun, preostaleMinuteVPlus);
-                    delavnikPopoldanskaZaObracun -= odsteto;
-                    preostaleMinuteVPlus -= odsteto;
-                    minuteKoriscene += odsteto;
+                    var odsteto = Math.Min(helpdeskPopoldanska, kreditiBrezPogodb);
+                    helpdeskPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                 }
+                if (kreditiPogodb > 0 && helpdeskPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPopoldanska, kreditiPogodb);
+                    helpdeskPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(terenskaPopoldanska, kreditiBrezPogodb);
+                    terenskaPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var delavnikPopoldanskaZaObracun = helpdeskPopoldanska + terenskaPopoldanska;
 
                 // Delavnik - nočna (22-7)
-                var delavnikNocnaZaObracun = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna;
-                if (preostaleMinuteVPlus > 0 && delavnikNocnaZaObracun > 0)
+                var helpdeskNocna = obracunaneRazdelitev.Delavnik_Nocna - obveznoRazdelitev.Delavnik_Nocna - terenskaRazdelitev.Delavnik_Nocna;
+                var terenskaNocna = terenskaRazdelitev.Delavnik_Nocna;
+                if (kreditiBrezPogodb > 0 && helpdeskNocna > 0)
                 {
-                    var odsteto = Math.Min(delavnikNocnaZaObracun, preostaleMinuteVPlus);
-                    delavnikNocnaZaObracun -= odsteto;
-                    preostaleMinuteVPlus -= odsteto;
-                    minuteKoriscene += odsteto;
+                    var odsteto = Math.Min(helpdeskNocna, kreditiBrezPogodb);
+                    helpdeskNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
                 }
+                if (kreditiPogodb > 0 && helpdeskNocna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskNocna, kreditiPogodb);
+                    helpdeskNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaNocna > 0)
+                {
+                    var odsteto = Math.Min(terenskaNocna, kreditiBrezPogodb);
+                    terenskaNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var delavnikNocnaZaObracun = helpdeskNocna + terenskaNocna;
 
                 // Prištej obvezne minute nazaj (ObveznoZaracunaj - ne gredo skozi dobroimetje)
                 delavnikDnevnaZaObracun += obveznoRazdelitev.Delavnik_Dnevna;
                 delavnikPopoldanskaZaObracun += obveznoRazdelitev.Delavnik_Popoldanska;
                 delavnikNocnaZaObracun += obveznoRazdelitev.Delavnik_Nocna;
 
-                // Delavnik (z odštetim dobroimetjem)
-                // Vikend in Praznik
-                // Uporabi toleranco minut
-                var (tDel7_16, tDel16_22, tDel22_7, tVik7_16, tVik16_22, tVik22_7, tPra7_16, tPra16_22, tPra22_7) = 
+                // Vikend - dnevna (7-16)
+                var helpdeskVikDnevna = obracunaneRazdelitev.Vikend_Dnevna - obveznoRazdelitev.Vikend_Dnevna - terenskaRazdelitev.Vikend_Dnevna;
+                var terenskaVikDnevna = terenskaRazdelitev.Vikend_Dnevna;
+                if (kreditiBrezPogodb > 0 && helpdeskVikDnevna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikDnevna, kreditiBrezPogodb);
+                    helpdeskVikDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskVikDnevna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikDnevna, kreditiPogodb);
+                    helpdeskVikDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaVikDnevna > 0)
+                {
+                    var odsteto = Math.Min(terenskaVikDnevna, kreditiBrezPogodb);
+                    terenskaVikDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var vikendDnevnaZaObracun = helpdeskVikDnevna + terenskaVikDnevna + obveznoRazdelitev.Vikend_Dnevna;
+
+                // Vikend - popoldanska (16-22)
+                var helpdeskVikPopoldanska = obracunaneRazdelitev.Vikend_Popoldanska - obveznoRazdelitev.Vikend_Popoldanska - terenskaRazdelitev.Vikend_Popoldanska;
+                var terenskaVikPopoldanska = terenskaRazdelitev.Vikend_Popoldanska;
+                if (kreditiBrezPogodb > 0 && helpdeskVikPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikPopoldanska, kreditiBrezPogodb);
+                    helpdeskVikPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskVikPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikPopoldanska, kreditiPogodb);
+                    helpdeskVikPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaVikPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(terenskaVikPopoldanska, kreditiBrezPogodb);
+                    terenskaVikPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var vikendPopoldanskaZaObracun = helpdeskVikPopoldanska + terenskaVikPopoldanska + obveznoRazdelitev.Vikend_Popoldanska;
+
+                // Vikend - nočna (22-7)
+                var helpdeskVikNocna = obracunaneRazdelitev.Vikend_Nocna - obveznoRazdelitev.Vikend_Nocna - terenskaRazdelitev.Vikend_Nocna;
+                var terenskaVikNocna = terenskaRazdelitev.Vikend_Nocna;
+                if (kreditiBrezPogodb > 0 && helpdeskVikNocna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikNocna, kreditiBrezPogodb);
+                    helpdeskVikNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskVikNocna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskVikNocna, kreditiPogodb);
+                    helpdeskVikNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaVikNocna > 0)
+                {
+                    var odsteto = Math.Min(terenskaVikNocna, kreditiBrezPogodb);
+                    terenskaVikNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var vikendNocnaZaObracun = helpdeskVikNocna + terenskaVikNocna + obveznoRazdelitev.Vikend_Nocna;
+
+                // Praznik - dnevna (7-16)
+                var helpdeskPraDnevna = obracunaneRazdelitev.Praznik_Dnevna - obveznoRazdelitev.Praznik_Dnevna - terenskaRazdelitev.Praznik_Dnevna;
+                var terenskaPraDnevna = terenskaRazdelitev.Praznik_Dnevna;
+                if (kreditiBrezPogodb > 0 && helpdeskPraDnevna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraDnevna, kreditiBrezPogodb);
+                    helpdeskPraDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskPraDnevna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraDnevna, kreditiPogodb);
+                    helpdeskPraDnevna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaPraDnevna > 0)
+                {
+                    var odsteto = Math.Min(terenskaPraDnevna, kreditiBrezPogodb);
+                    terenskaPraDnevna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var praznikDnevnaZaObracun = helpdeskPraDnevna + terenskaPraDnevna + obveznoRazdelitev.Praznik_Dnevna;
+
+                // Praznik - popoldanska (16-22)
+                var helpdeskPraPopoldanska = obracunaneRazdelitev.Praznik_Popoldanska - obveznoRazdelitev.Praznik_Popoldanska - terenskaRazdelitev.Praznik_Popoldanska;
+                var terenskaPraPopoldanska = terenskaRazdelitev.Praznik_Popoldanska;
+                if (kreditiBrezPogodb > 0 && helpdeskPraPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraPopoldanska, kreditiBrezPogodb);
+                    helpdeskPraPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskPraPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraPopoldanska, kreditiPogodb);
+                    helpdeskPraPopoldanska -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaPraPopoldanska > 0)
+                {
+                    var odsteto = Math.Min(terenskaPraPopoldanska, kreditiBrezPogodb);
+                    terenskaPraPopoldanska -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                var praznikPopoldanskaZaObracun = helpdeskPraPopoldanska + terenskaPraPopoldanska + obveznoRazdelitev.Praznik_Popoldanska;
+
+                // Praznik - nočna (22-7)
+                var helpdeskPraNocna = obracunaneRazdelitev.Praznik_Nocna - obveznoRazdelitev.Praznik_Nocna - terenskaRazdelitev.Praznik_Nocna;
+                var terenskaPraNocna = terenskaRazdelitev.Praznik_Nocna;
+                if (kreditiBrezPogodb > 0 && helpdeskPraNocna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraNocna, kreditiBrezPogodb);
+                    helpdeskPraNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiPogodb > 0 && helpdeskPraNocna > 0)
+                {
+                    var odsteto = Math.Min(helpdeskPraNocna, kreditiPogodb);
+                    helpdeskPraNocna -= odsteto; kreditiPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                if (kreditiBrezPogodb > 0 && terenskaPraNocna > 0)
+                {
+                    var odsteto = Math.Min(terenskaPraNocna, kreditiBrezPogodb);
+                    terenskaPraNocna -= odsteto; kreditiBrezPogodb -= odsteto; minuteKoriscene += odsteto;
+                }
+                // HD skupne minute: helpdesk + obvezno helpdesk
+                var hdDel7_16 = helpdeskDnevna + obveznoRazdelitev.Delavnik_Dnevna - obveznoTerenskaRazdelitev.Delavnik_Dnevna;
+                var hdDel16_22 = helpdeskPopoldanska + obveznoRazdelitev.Delavnik_Popoldanska - obveznoTerenskaRazdelitev.Delavnik_Popoldanska;
+                var hdDel22_7 = helpdeskNocna + obveznoRazdelitev.Delavnik_Nocna - obveznoTerenskaRazdelitev.Delavnik_Nocna;
+                var hdVik7_16 = helpdeskVikDnevna + obveznoRazdelitev.Vikend_Dnevna - obveznoTerenskaRazdelitev.Vikend_Dnevna;
+                var hdVik16_22 = helpdeskVikPopoldanska + obveznoRazdelitev.Vikend_Popoldanska - obveznoTerenskaRazdelitev.Vikend_Popoldanska;
+                var hdVik22_7 = helpdeskVikNocna + obveznoRazdelitev.Vikend_Nocna - obveznoTerenskaRazdelitev.Vikend_Nocna;
+                var hdPra7_16 = helpdeskPraDnevna + obveznoRazdelitev.Praznik_Dnevna - obveznoTerenskaRazdelitev.Praznik_Dnevna;
+                var hdPra16_22 = helpdeskPraPopoldanska + obveznoRazdelitev.Praznik_Popoldanska - obveznoTerenskaRazdelitev.Praznik_Popoldanska;
+                var hdPra22_7 = helpdeskPraNocna + obveznoRazdelitev.Praznik_Nocna - obveznoTerenskaRazdelitev.Praznik_Nocna;
+
+                // Teren skupne minute: terenski + obvezno terenski
+                var terenDel7_16 = terenskaDnevna + obveznoTerenskaRazdelitev.Delavnik_Dnevna;
+                var terenDel16_22 = terenskaPopoldanska + obveznoTerenskaRazdelitev.Delavnik_Popoldanska;
+                var terenDel22_7 = terenskaNocna + obveznoTerenskaRazdelitev.Delavnik_Nocna;
+                var terenVik7_16 = terenskaVikDnevna + obveznoTerenskaRazdelitev.Vikend_Dnevna;
+                var terenVik16_22 = terenskaVikPopoldanska + obveznoTerenskaRazdelitev.Vikend_Popoldanska;
+                var terenVik22_7 = terenskaVikNocna + obveznoTerenskaRazdelitev.Vikend_Nocna;
+                var terenPra7_16 = terenskaPraDnevna + obveznoTerenskaRazdelitev.Praznik_Dnevna;
+                var terenPra16_22 = terenskaPraPopoldanska + obveznoTerenskaRazdelitev.Praznik_Popoldanska;
+                var terenPra22_7 = terenskaPraNocna + obveznoTerenskaRazdelitev.Praznik_Nocna;
+
+                // Uporabi toleranco minut - HD
+                var (tHdDel7_16, tHdDel16_22, tHdDel22_7, tHdVik7_16, tHdVik16_22, tHdVik22_7, tHdPra7_16, tHdPra16_22, tHdPra22_7) = 
                     UpostevajiToleranco(ctx.TolerancaMinut,
-                        delavnikDnevnaZaObracun, delavnikPopoldanskaZaObracun, delavnikNocnaZaObracun,
-                        obracunaneRazdelitev.Vikend_Dnevna, obracunaneRazdelitev.Vikend_Popoldanska, obracunaneRazdelitev.Vikend_Nocna,
-                        obracunaneRazdelitev.Praznik_Dnevna, obracunaneRazdelitev.Praznik_Popoldanska, obracunaneRazdelitev.Praznik_Nocna,
+                        hdDel7_16, hdDel16_22, hdDel22_7,
+                        hdVik7_16, hdVik16_22, hdVik22_7,
+                        hdPra7_16, hdPra16_22, hdPra22_7,
                         opis, data.Partner, ctx.Log);
 
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tDel7_16, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tDel16_22, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tDel22_7, opis, ref naslednjZs, manjkajoceSifre);
+                // Uporabi toleranco minut - Teren
+                var (tTerenDel7_16, tTerenDel16_22, tTerenDel22_7, tTerenVik7_16, tTerenVik16_22, tTerenVik22_7, tTerenPra7_16, tTerenPra16_22, tTerenPra22_7) = 
+                    UpostevajiToleranco(ctx.TolerancaMinut,
+                        terenDel7_16, terenDel16_22, terenDel22_7,
+                        terenVik7_16, terenVik16_22, terenVik22_7,
+                        terenPra7_16, terenPra16_22, terenPra22_7,
+                        opis, data.Partner, ctx.Log);
 
-                // Vikend
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tVik7_16, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tVik16_22, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tVik22_7, opis, ref naslednjZs, manjkajoceSifre);
+                // HD postavke (HD Servisna šifre artiklov)
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tHdDel7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tHdDel16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tHdDel22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
 
-                // Praznik
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tPra7_16, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tPra16_22, opis, ref naslednjZs, manjkajoceSifre);
-                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tPra22_7, opis, ref naslednjZs, manjkajoceSifre);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tHdVik7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tHdVik16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tHdVik22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tHdPra7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tHdPra16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tHdPra22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.ServisneNastavitve);
+
+                // Teren postavke (Teren Servisna šifre artiklov)
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Dnevna, tTerenDel7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, tTerenDel16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Delavnik, CasovnaTarifa.Nocna, tTerenDel22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Dnevna, tTerenVik7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Popoldanska, tTerenVik16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Vikend, CasovnaTarifa.Nocna, tTerenVik22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Dnevna, tTerenPra7_16, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Popoldanska, tTerenPra16_22, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
+                UstvariPostavkoPogodba(ctx, data.Partner, TipDneva.Praznik, CasovnaTarifa.Nocna, tTerenPra22_7, opis, ref naslednjZs, manjkajoceSifre, ctx.TerenServisneNastavitve);
             }
 
             // Preračunaj MinuteObracunane = bruto minute - koriščene minute
@@ -1371,33 +2156,34 @@ namespace ObracunDb.Services
         /// <summary>
         /// Ustvari postavko za obračun servisnih storitev brez pogodbe.
         /// </summary>
-        private static void UstvariPostavkoBrezPogodbe(ObracunContext ctx, int partner, TipDneva tipDneva, CasovnaTarifa tarifa, int minute, StringBuilder opis, ref int naslednjZs, HashSet<string> manjkajoceSifre)
+        private static void UstvariPostavkoBrezPogodbe(ObracunContext ctx, int partner, TipDneva tipDneva, CasovnaTarifa tarifa, int minute, StringBuilder opis, ref int naslednjZs, HashSet<string> manjkajoceSifre, ServisneNastavitve nastavitve, string tipNastavitev = "Servis")
         {
             if (minute <= 0)
                 return;
 
             // Pridobi šifro artikla za to obdobje
-            var sifra = ctx.ServisneNastavitve.GetSifraBrezPogodbe(tipDneva, tarifa);
+            var sifra = nastavitve.GetSifraBrezPogodbe(tipDneva, tarifa);
             if (string.IsNullOrEmpty(sifra))
             {
                 var obdobje = DoloObdobjeNaziv(tipDneva, tarifa);
                 manjkajoceSifre.Add($"Brez pogodbe, {obdobje}");
+                opis.AppendLine($"   ! PRESKOČENO ({tipNastavitev}, {obdobje}, {minute} min): manjka šifra v nastavitvah 'Brez pogodbe'");
                 return;
             }
 
-            UstvariServisnoPostavko(ctx, partner, tipDneva, tarifa, minute, sifra, 0, opis, ref naslednjZs, manjkajoceSifre, "Servis");
+            UstvariServisnoPostavko(ctx, partner, tipDneva, tarifa, minute, sifra, 0, opis, ref naslednjZs, manjkajoceSifre, tipNastavitev);
         }
 
         /// <summary>
         /// Ustvari postavko za obračun servisnih storitev s pogodbo.
         /// </summary>
-        private static void UstvariPostavkoPogodba(ObracunContext ctx, int partner, TipDneva tipDneva, CasovnaTarifa tarifa, int minute, StringBuilder opis, ref int naslednjZs, HashSet<string> manjkajoceSifre)
+        private static void UstvariPostavkoPogodba(ObracunContext ctx, int partner, TipDneva tipDneva, CasovnaTarifa tarifa, int minute, StringBuilder opis, ref int naslednjZs, HashSet<string> manjkajoceSifre, ServisneNastavitve nastavitve)
         {
             if (minute <= 0)
                 return;
 
             // Pridobi šifro artikla za to obdobje
-            var sifra = ctx.ServisneNastavitve.GetSifraPogodba(tipDneva, tarifa);
+            var sifra = nastavitve.GetSifraPogodba(tipDneva, tarifa);
             if (string.IsNullOrEmpty(sifra))
             {
                 var obdobje = DoloObdobjeNaziv(tipDneva, tarifa);
@@ -1417,6 +2203,7 @@ namespace ObracunDb.Services
             if (!ctx.Artikli.TryGetValue(sifra, out var artikel))
             {
                 manjkajoceSifre.Add($"Artikel {sifra} ne obstaja v šifrantu");
+                opis.AppendLine($"   ! PRESKOČENO ({nazivPrefix} {DoloObdobjeNaziv(tipDneva, tarifa)}, {minute} min): artikel '{sifra}' ne obstaja v šifrantu");
                 return;
             }
 
@@ -1454,6 +2241,8 @@ namespace ObracunDb.Services
             var cenaStr = cena.ToString("N2").PadLeft(9);
             var rabatStr = rabat.ToString("N1").PadLeft(5);
             var vrednostStr = vrednost.ToString("N2").PadLeft(10);
+
+            opis.AppendLine($"   - {sifraStr} {nazivStr} {enotaStr} {kolicinaStr} {cenaStr} {rabatStr} {vrednostStr}  ({opisEnote})");
 
             // Shrani postavko v bazo
             ctx.Db.Insert(new ObracunOsnutekPos
@@ -1501,13 +2290,13 @@ namespace ObracunDb.Services
             ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Delavnik, CasovnaTarifa.Popoldanska, razdelitev.Delavnik_Popoldanska, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
             ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Delavnik, CasovnaTarifa.Nocna, razdelitev.Delavnik_Nocna, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
 
-            // Vikend in praznik (brez odštevanja - null vrednosti za odštete minute)
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Dnevna, razdelitev.Vikend_Dnevna, obracunam, imaPogodbo, null, null, trajanjeNaloga);
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Popoldanska, razdelitev.Vikend_Popoldanska, obracunam, imaPogodbo, null, null, trajanjeNaloga);
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Nocna, razdelitev.Vikend_Nocna, obracunam, imaPogodbo, null, null, trajanjeNaloga);
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Dnevna, razdelitev.Praznik_Dnevna, obracunam, imaPogodbo, null, null, trajanjeNaloga);
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Popoldanska, razdelitev.Praznik_Popoldanska, obracunam, imaPogodbo, null, null, trajanjeNaloga);
-            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Nocna, razdelitev.Praznik_Nocna, obracunam, imaPogodbo, null, null, trajanjeNaloga);
+            // Vikend in praznik
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Dnevna, razdelitev.Vikend_Dnevna, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Popoldanska, razdelitev.Vikend_Popoldanska, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Vikend, CasovnaTarifa.Nocna, razdelitev.Vikend_Nocna, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Dnevna, razdelitev.Praznik_Dnevna, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Popoldanska, razdelitev.Praznik_Popoldanska, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
+            ZapisiKategorijoNalogObracun(ctx, nalog, TipDneva.Praznik, CasovnaTarifa.Nocna, razdelitev.Praznik_Nocna, obracunam, imaPogodbo, sklad, povezaniPredracuni, trajanjeNaloga);
         }
 
         /// <summary>
@@ -1688,6 +2477,142 @@ namespace ObracunDb.Services
                 VseMinutePartnerMinute = result.VseMinutePartnerMinute,
                 ZePorabljenePartnerMinute = result.ZePorabljenePartnerMinute
             });
+        }
+
+        /// <summary>
+        /// Uporabi vse zapise iz OBRACUN_OSNUTEK_SPREMEMBA za danega partnerja:
+        /// - če artikel že obstaja v OBRACUN_OSNUTEK_POS, mu prištej količino (negativna količina = odštevanje)
+        /// - če bi nova količina bila <= 0, postavko izbriši
+        /// - če artikel še ne obstaja, ustvari novo postavko (TipPostavke = NALOG, da se ob ponovnem obračunu pobriše in ne podvaja)
+        /// V <paramref name="logRows"/> doda zapise o starih in novih postavkah za izpis v skupnem logu.
+        /// </summary>
+        private static void UporabiSpremembeKolicin(ObracunContext ctx, int partner, List<string> logRows)
+        {
+            var spremembe = ctx.Db.ObracunOsnutekSprememba
+                .Where(s => s.Mesec == ctx.Mesec && s.Leto == ctx.Leto && s.Partner == partner)
+                .OrderBy(s => s.DatumVnosa)
+                .ToList();
+
+            if (spremembe.Count == 0)
+                return;
+
+            string? nazivPartnerja = ctx.Db.Partner
+                .Where(p => p.Sifra == partner)
+                .Select(p => p.Naziv)
+                .FirstOrDefault();
+
+            // 1) Posnetek postavk PRED spremembami
+            var postavkePred = ctx.Db.ObracunOsnutekPos
+                .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner)
+                .OrderBy(p => p.Zs)
+                .ToList();
+
+            logRows.Add("");
+            logRows.Add($"--- Partner {partner} {nazivPartnerja} ---");
+
+            // Seznam sprememb
+            logRows.Add($"  Spremembe količin:");
+            foreach (var s in spremembe)
+            {
+                ctx.Artikli.TryGetValue(s.Artikel, out var artInfoLog);
+                var nazivLog = artInfoLog?.Naziv ?? "?";
+                var opombaLog = string.IsNullOrWhiteSpace(s.Opomba) ? "" : $", opomba: \"{s.Opomba}\"";
+                logRows.Add($"    {s.Artikel} ({nazivLog}), kolicina {s.Kolicina:N2}  [{s.Uporabnik}, {s.DatumVnosa:dd.MM.yyyy HH:mm}{opombaLog}]");
+            }
+
+            // Postavke PRED
+            logRows.Add($"  Postavke računa PRED spremembami:");
+            if (postavkePred.Count == 0)
+            {
+                logRows.Add($"    (ni postavk)");
+            }
+            else
+            {
+                foreach (var p in postavkePred)
+                {
+                    var kol = p.Kolicina ?? 0m;
+                    var vred = kol * (p.Cena ?? 0m) * (1m - (p.Rabat ?? 0m) / 100m);
+                    logRows.Add($"    {p.Artikel} {p.Naziv}, kolicina {kol:N2}, vrednost {vred:N2}");
+                }
+            }
+
+            // 2) Uveljavi spremembe
+            foreach (var s in spremembe)
+            {
+                ctx.Artikli.TryGetValue(s.Artikel, out var artInfo);
+                var nazivArt = artInfo?.Naziv ?? "?";
+                var cenaArt = artInfo?.ProdajnaCena ?? 0m;
+
+                var obstojeca = ctx.Db.ObracunOsnutekPos
+                    .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner && p.Artikel == s.Artikel)
+                    .OrderBy(p => p.Zs)
+                    .FirstOrDefault();
+
+                if (obstojeca != null)
+                {
+                    var staraKol = obstojeca.Kolicina ?? 0m;
+                    var novaKol = staraKol + s.Kolicina;
+                    if (novaKol <= 0m)
+                    {
+                        ctx.Db.ObracunOsnutekPos
+                            .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner && p.Zs == obstojeca.Zs)
+                            .Delete();
+                    }
+                    else
+                    {
+                        ctx.Db.ObracunOsnutekPos
+                            .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner && p.Zs == obstojeca.Zs)
+                            .Set(p => p.Kolicina, novaKol)
+                            .Update();
+                    }
+                }
+                else
+                {
+                    if (s.Kolicina <= 0m)
+                        continue;
+
+                    var maxZs = ctx.Db.ObracunOsnutekPos
+                        .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner)
+                        .Select(p => (int?)p.Zs)
+                        .Max() ?? 0;
+
+                    var novaPostavka = new ObracunOsnutekPos
+                    {
+                        Mesec = ctx.Mesec,
+                        Leto = ctx.Leto,
+                        Partner = partner,
+                        Zs = maxZs + 1,
+                        Artikel = s.Artikel,
+                        Naziv = nazivArt,
+                        Kolicina = s.Kolicina,
+                        Cena = cenaArt,
+                        Rabat = 0m,
+                        TipPostavke = TipPostavke.NALOG
+                    };
+                    ctx.Db.Insert(novaPostavka);
+                }
+            }
+
+            // 3) Posnetek postavk PO spremembah
+            var postavkePo = ctx.Db.ObracunOsnutekPos
+                .Where(p => p.Mesec == ctx.Mesec && p.Leto == ctx.Leto && p.Partner == partner)
+                .OrderBy(p => p.Zs)
+                .ToList();
+
+            logRows.Add($"  Postavke računa PO spremembah:");
+            if (postavkePo.Count == 0)
+            {
+                logRows.Add($"    (ni postavk)");
+            }
+            else
+            {
+                foreach (var p in postavkePo)
+                {
+                    var kol = p.Kolicina ?? 0m;
+                    var vred = kol * (p.Cena ?? 0m) * (1m - (p.Rabat ?? 0m) / 100m);
+                    logRows.Add($"    {p.Artikel} {p.Naziv}, kolicina {kol:N2}, vrednost {vred:N2}");
+                }
+            }
         }
 
         private void ShraniLog(ObracunLinqDb db, int mesec, int leto, List<string> log)

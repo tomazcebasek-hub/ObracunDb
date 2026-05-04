@@ -44,10 +44,10 @@ public class PredracunService
                 GROUP BY PREDRACUN_STEVILKA, PREDRACUN_LETO
                 HAVING SUM(ZNESEK + COALESCE(SCONTO, 0)) > 0
             ) pl ON p.STEVILKA = pl.PREDRACUN_STEVILKA AND p.LETO = pl.PREDRACUN_LETO
-            WHERE p.LETO >= @OdLeta
+            WHERE p.DATUM >= @DatumOd
             ORDER BY p.LETO DESC, p.STEVILKA DESC", connection);
 
-        command.Parameters.AddWithValue("@OdLeta", odLeta);
+        command.Parameters.AddWithValue("@DatumOd", new DateTime(odLeta, 1, 1));
 
         await using var reader = await command.ExecuteReaderAsync();
 
@@ -69,13 +69,15 @@ public class PredracunService
 
         // 2. Naložim vse raèune kjer je vpisan predraèun
         var racunZneski = new Dictionary<string, decimal>();
-        var racunObstaja = new HashSet<string>(); // Sledim kateri predraèuni imajo raèun
+        var racunObstaja = new HashSet<string>();
+        var racunStevilke = new Dictionary<string, HashSet<string>>();
 
         await using var cmdRacuni = new FbCommand(@"
             SELECT 
                 PREDRAC1_STEVILKA, PREDRAC1_LETO, COALESCE(PREDRAC1_ZNESEK, 0),
                 PREDRAC2_STEVILKA, PREDRAC2_LETO, COALESCE(PREDRAC2_ZNESEK, 0),
-                POVEZAVA_STEVILKA, POVEZAVA_LETO
+                POVEZAVA_STEVILKA, POVEZAVA_LETO,
+                STEVILKA
             FROM FA_RACUN
             WHERE (PREDRAC1_LETO >= @OdLeta AND PREDRAC1_STEVILKA IS NOT NULL)
                OR (PREDRAC2_LETO >= @OdLeta AND PREDRAC2_STEVILKA IS NOT NULL)
@@ -87,20 +89,25 @@ public class PredracunService
 
         while (await readerRacuni.ReadAsync())
         {
+            var racunSt = readerRacuni.GetInt32(8).ToString();
+
             // PREDRAC1
             if (!readerRacuni.IsDBNull(0) && !readerRacuni.IsDBNull(1))
             {
                 var stevilkaStr = readerRacuni.GetString(0).Trim();
                 var leto = readerRacuni.GetInt32(1);
                 var znesek = readerRacuni.GetDecimal(2);
-                
+
                 var key = $"{stevilkaStr}_{leto}";
                 if (racunZneski.ContainsKey(key))
                     racunZneski[key] += znesek;
                 else
                     racunZneski[key] = znesek;
-                
+
                 racunObstaja.Add(key);
+                if (!racunStevilke.TryGetValue(key, out var set1))
+                    racunStevilke[key] = set1 = new HashSet<string>();
+                set1.Add(racunSt);
             }
 
             // PREDRAC2
@@ -109,14 +116,17 @@ public class PredracunService
                 var stevilkaStr = readerRacuni.GetString(3).Trim();
                 var leto = readerRacuni.GetInt32(4);
                 var znesek = readerRacuni.GetDecimal(5);
-                
+
                 var key = $"{stevilkaStr}_{leto}";
                 if (racunZneski.ContainsKey(key))
                     racunZneski[key] += znesek;
                 else
                     racunZneski[key] = znesek;
-                
+
                 racunObstaja.Add(key);
+                if (!racunStevilke.TryGetValue(key, out var set2))
+                    racunStevilke[key] = set2 = new HashSet<string>();
+                set2.Add(racunSt);
             }
 
             // POVEZAVA (samo oznaèim da obstaja raèun, brez zneska)
@@ -126,6 +136,9 @@ public class PredracunService
                 var leto = readerRacuni.GetInt32(7);
                 var key = $"{stevilkaStr}_{leto}";
                 racunObstaja.Add(key);
+                if (!racunStevilke.TryGetValue(key, out var set3))
+                    racunStevilke[key] = set3 = new HashSet<string>();
+                set3.Add(racunSt);
             }
         }
 
@@ -143,15 +156,12 @@ public class PredracunService
             // Èe obstaja kakršnakoli povezava na raèun, oznaèim da ima raèun
             if (racunObstaja.Contains(key))
             {
-                // PlacanoIzRacunov lahko ostane 0 ali ima vrednost iz zgornjega if-a
-                // RacunStatus bo vrnil "Raèun" èe PlacanoIzRacunov > 0
-                // AMPAK: Èe je samo POVEZAVA (brez PREDRAC1/2), moramo nastavit fiktiven znesek
                 if (!racunZneski.ContainsKey(key))
-                {
-                    // Nastavim zelo majhen znesek, da bo RacunStatus vrnil "Raèun"
                     predracun.PlacanoIzRacunov = 0.01m;
-                }
             }
+
+            if (racunStevilke.TryGetValue(key, out var stevilke))
+                predracun.PovezaniRacuni = string.Join(", ", stevilke.OrderBy(s => s));
         }
 
         return result;

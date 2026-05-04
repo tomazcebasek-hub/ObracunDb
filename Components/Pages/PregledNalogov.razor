@@ -20,7 +20,7 @@
         <!-- Levo: grid nalogov -->
         <div style="flex: 1; overflow: hidden;">
             <DxGrid @ref="gridNalogi"
-                    Data="@nalogi"
+                    Data="@nalogiFiltered"
                     KeyFieldName="@nameof(PotrjevanjeNalogDto.Key)"
                     ShowFilterRow="true"
                     FocusedRowEnabled="true"
@@ -153,6 +153,14 @@
             <DxDateEdit @bind-Date="@datumDo" Format="dd.MM.yyyy" NullText="Do" style="width: 140px;" />
             <DxButton Text="Prikaži" RenderStyle="ButtonRenderStyle.Primary" Click="@NaloziPodatke" />
         }
+        <DxComboBox Data="@serviserjiOptions"
+                    Value="@izbranServiser"
+                    ValueChanged="@((string? v) => OnServiserChanged(v))"
+                    TextFieldName="Text"
+                    ValueFieldName="Value"
+                    NullText="Vsi serviserji"
+                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                    style="width: 200px;" />
         @if (isLoading)
         {
             <span class="text-muted">Nalagam...</span>
@@ -229,6 +237,16 @@
     int _mesec;
     int _leto;
 
+    // Serviser filter
+    string? izbranServiser;
+    List<ServiserOption> serviserjiOptions = new();
+    record ServiserOption(string Value, string Text);
+
+    IEnumerable<PotrjevanjeNalogDto> nalogiFiltered =>
+        string.IsNullOrEmpty(izbranServiser)
+            ? nalogi
+            : nalogi.Where(n => n.Potnik == izbranServiser);
+
     // Račun dialog
     bool showRacun;
     bool racunIsLoading;
@@ -281,6 +299,13 @@
             await NaloziPodatke();
     }
 
+    void OnServiserChanged(string? value)
+    {
+        izbranServiser = value;
+        selectedNalog = null;
+        nalogPostavke = new();
+    }
+
     async Task NaloziPodatke()
     {
         isLoading = true;
@@ -292,6 +317,18 @@
         {
             var (od, do_) = IzracunajObdobje();
             nalogi = await ObracunService.GetNalogiZaPregledAsync(od, do_);
+
+            // Osveži seznam serviserjev iz naloženih nalogov
+            serviserjiOptions = nalogi
+                .Where(n => !string.IsNullOrEmpty(n.Potnik))
+                .GroupBy(n => n.Potnik!)
+                .Select(g => new ServiserOption(g.Key, g.First().NazivPotnika ?? g.Key))
+                .OrderBy(o => o.Text)
+                .ToList();
+
+            // Če izbrani serviser ne obstaja več, počisti filter
+            if (!string.IsNullOrEmpty(izbranServiser) && !serviserjiOptions.Any(s => s.Value == izbranServiser))
+                izbranServiser = null;
         }
         catch (Exception ex)
         {

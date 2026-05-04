@@ -1,0 +1,136 @@
+@page "/sestevek-dela"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@using Microsoft.AspNetCore.Components.Sections
+@inject ParametriService Parametri
+@inject ObracunService ObracunService
+
+<PageTitle>Seštevek dela</PageTitle>
+
+<style>
+    .sestevek-dela-grid {
+        height: calc(100vh - 100px);
+    }
+</style>
+<SectionContent SectionName="PageHeaderExtra">
+    <span class="ms-3 d-inline-flex align-items-center">
+        Mesec obračuna:
+        <select class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;"
+                value="@izbranoObdobje" @onchange="OnObdobjeChanged">
+            @foreach (var m in meseci)
+            {
+                <option value="@($"{m.Mesec:D2}/{m.Leto}")">
+                    @($"{m.Mesec:D2}/{m.Leto}")
+                </option>
+            }
+        </select>
+    </span>
+</SectionContent>
+
+@if (isLoading)
+{
+    <p class="mt-3">Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger mt-3">@errorMessage</div>
+}
+else
+{
+    <div class="mt-3">
+        <DxGrid Data="@podatki"
+                ShowAllRows="true"
+                CssClass="w-100 sestevek-dela-grid"
+                ShowFooter="true"
+                ShowFilterRow="true"
+                AllowSort="true"
+                KeyFieldName="@nameof(SestevekDelaGridDto.SifraArtikla)">
+            <Columns>
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.SifraArtikla)" Caption="Šifra artikla" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.NazivArtikla)" Caption="Naziv artikla" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.Enota)" Caption="Enota" Width="80px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.KolicinaSkupaj)" Caption="Količina skupaj (ure)" Width="160px" DisplayFormat="N2" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.KolicinaNeobracunana)" Caption="Neobračunana (ure)" Width="150px" DisplayFormat="N2" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.KolicinaObracunana)" Caption="Obračunana (ure)" Width="140px" DisplayFormat="N2" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.OdsteteRocno)" Caption="Odšt. ročno (min)" Width="140px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.OdstetePartnerMinute)" Caption="Odšt. partner min." Width="150px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.OdstetePredracun)" Caption="Odšt. predračun" Width="140px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.OdstetePogodba)" Caption="Odšt. pogodba" Width="130px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.OdsteteSkupaj)" Caption="Odšt. skupaj (min)" Width="150px" />
+                <DxGridDataColumn FieldName="@nameof(SestevekDelaGridDto.KolicinaFakturirana)" Caption="Zaračunano (min)" Width="140px" DisplayFormat="N2" />
+            </Columns>
+            <TotalSummary>
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(SestevekDelaGridDto.SifraArtikla)" DisplayText="Artiklov: {0}" FooterColumnName="@nameof(SestevekDelaGridDto.SifraArtikla)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.KolicinaSkupaj)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekDelaGridDto.KolicinaSkupaj)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.KolicinaNeobracunana)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekDelaGridDto.KolicinaNeobracunana)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.KolicinaObracunana)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekDelaGridDto.KolicinaObracunana)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.OdsteteRocno)" DisplayText="{0:N0}" FooterColumnName="@nameof(SestevekDelaGridDto.OdsteteRocno)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.OdstetePartnerMinute)" DisplayText="{0:N0}" FooterColumnName="@nameof(SestevekDelaGridDto.OdstetePartnerMinute)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.OdstetePredracun)" DisplayText="{0:N0}" FooterColumnName="@nameof(SestevekDelaGridDto.OdstetePredracun)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.OdstetePogodba)" DisplayText="{0:N0}" FooterColumnName="@nameof(SestevekDelaGridDto.OdstetePogodba)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.OdsteteSkupaj)" DisplayText="{0:N0}" FooterColumnName="@nameof(SestevekDelaGridDto.OdsteteSkupaj)" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(SestevekDelaGridDto.KolicinaFakturirana)" DisplayText="{0:N2}" FooterColumnName="@nameof(SestevekDelaGridDto.KolicinaFakturirana)" />
+            </TotalSummary>
+        </DxGrid>
+    </div>
+}
+
+@code {
+    int mesec;
+    int leto;
+    List<SestevekDelaGridDto> podatki = new();
+    List<(int Leto, int Mesec)> meseci = new();
+    string izbranoObdobje = "";
+    bool isLoading = true;
+    string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+        leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+        izbranoObdobje = $"{mesec:D2}/{leto}";
+
+        meseci = await ObracunService.GetSestevekMeseciAsync();
+        if (meseci.Count > 0 && !meseci.Any(m => m.Leto == leto && m.Mesec == mesec))
+        {
+            leto = meseci[0].Leto;
+            mesec = meseci[0].Mesec;
+            izbranoObdobje = $"{mesec:D2}/{leto}";
+        }
+
+        await NaloziPodatke();
+    }
+
+    async Task OnObdobjeChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        var parts = val.Split('/');
+        if (parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var l))
+        {
+            mesec = m;
+            leto = l;
+            izbranoObdobje = val;
+            isLoading = true;
+            errorMessage = null;
+            await NaloziPodatke();
+        }
+    }
+
+    async Task NaloziPodatke()
+    {
+        try
+        {
+            podatki = await ObracunService.GetSestevekDelaAsync(leto, mesec);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri nalaganju podatkov: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

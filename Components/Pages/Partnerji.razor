@@ -6,8 +6,10 @@
 
 <PageTitle>Partnerji</PageTitle>
 <SectionContent SectionName="PageHeaderExtra">
-    <DxButton Text="@leto.ToString()" Click="@(() => letoPopupVisible = true)"
-              RenderStyle="ButtonRenderStyle.Secondary" SizeMode="SizeMode.Small" CssClass="ms-2" />
+    <DxButton Text="2025" Click="@(() => OnLetoQuick(2025))"
+              RenderStyle="@(leto == 2025 ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)" SizeMode="SizeMode.Small" CssClass="ms-2" />
+    <DxButton Text="2026" Click="@(() => OnLetoQuick(2026))"
+              RenderStyle="@(leto == 2026 ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)" SizeMode="SizeMode.Small" CssClass="ms-1" />
 </SectionContent>
 
 @if (isLoading)
@@ -283,6 +285,13 @@ else
         {
             isLoading = false;
         }
+    }
+
+    async Task OnLetoQuick(int novoL)
+    {
+        if (leto == novoL) return;
+        leto = novoL;
+        await OnOsveziClicked();
     }
 
     async Task OnLetoConfirmed()

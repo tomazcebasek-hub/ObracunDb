@@ -63,6 +63,9 @@ public class ParametriService
         // Toleranca minut
         Define(ObracunParam.TolerancaMinut, "Toleranca minut za obraèun", 0);
 
+        // Debug partner – šifra partnerja za podroben debug izpis (0 = brez debug izpisa)
+        Define(ObracunParam.DebugPartner, "Debug partner šifra", 0);
+
         // FAW zapis
         Define(ObracunParam.FawDatumRacuna, "FAW datum raèuna", "");
         Define(ObracunParam.FawKomercialist, "FAW komercialist", "");

@@ -16,6 +16,7 @@ public enum ObracunParam
     ProcentPopustaPogodbe,
     SifraKilometrina,
     TolerancaMinut,
+    DebugPartner,
 
     // FAW
     FawDatumRacuna,

@@ -215,8 +215,7 @@ else
             await using (var cmdPo = new FbCommand(@"
                 SELECT DISTINCT fp.SIFRA_KUPCA
                 FROM FA_PREDRACUN fp
-                WHERE fp.DATUM >= '2025-10-31'
-                  AND fp.LETO >= 2025
+                WHERE fp.DATUM >= '2026-01-01'
                   AND (
                    fp.STANJE IN (2, 5)
                     OR EXISTS (
@@ -277,7 +276,7 @@ else
             {
                 var vsi = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, 1, 2026);
                 predracuni = vsi
-                    .Where(p => p.StanjePrikaz is "Potrjen" or "Plačano" or "Delno")
+                    .Where(p => p.StanjePrikaz is "Potrjen" or "Plačano" or "Delno" or "Porabljeno")
                     .ToList();
             }
             catch

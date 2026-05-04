@@ -294,6 +294,30 @@ public class ObracunService
     }
 
     /// <summary>
+    /// Pridobi distinct mesece/leta iz OBRACUN_OSNUTEK_POS, razvršèene padajoèe.
+    /// </summary>
+    public async Task<List<(int Leto, int Mesec)>> GetSestevekMeseciAsync()
+    {
+        var rezultat = new List<(int Leto, int Mesec)>();
+
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        await using var cmd = new FbCommand(@"
+            SELECT DISTINCT LETO, MESEC
+            FROM OBRACUN_OSNUTEK_POS
+            ORDER BY LETO DESC, MESEC DESC", connection);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            rezultat.Add((reader.GetInt32(0), reader.GetInt32(1)));
+        }
+
+        return rezultat;
+    }
+
+    /// <summary>
     /// Pridobi seštevek postavk po partnerjih za doloèen artikel.
     /// </summary>
     public async Task<List<SestevekDetailDto>> GetSestevekDetailAsync(int leto, int mesec, string artikel)
@@ -1480,12 +1504,14 @@ public class ObracunService
         // 2. Raèuni vezani na predraèune tega partnerja
         var racunZneski = new Dictionary<string, decimal>();
         var racunObstaja = new HashSet<string>();
+        var racunStevilke = new Dictionary<string, HashSet<string>>();
 
         await using (var cmd = new FbCommand(@"
             SELECT 
                 PREDRAC1_STEVILKA, PREDRAC1_LETO, COALESCE(PREDRAC1_ZNESEK, 0),
                 PREDRAC2_STEVILKA, PREDRAC2_LETO, COALESCE(PREDRAC2_ZNESEK, 0),
-                POVEZAVA_STEVILKA, POVEZAVA_LETO
+                POVEZAVA_STEVILKA, POVEZAVA_LETO,
+                STEVILKA
             FROM FA_RACUN
             WHERE SIFRA_KUPCA = @Partner
               AND ((PREDRAC1_STEVILKA IS NOT NULL)
@@ -1497,12 +1523,17 @@ public class ObracunService
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
+                var racunSt = reader.GetInt32(8).ToString();
+
                 // PREDRAC1
                 if (!reader.IsDBNull(0) && !reader.IsDBNull(1))
                 {
                     var key = $"{reader.GetString(0).Trim()}_{reader.GetInt32(1)}";
                     racunZneski[key] = racunZneski.GetValueOrDefault(key) + reader.GetDecimal(2);
                     racunObstaja.Add(key);
+                    if (!racunStevilke.TryGetValue(key, out var set1))
+                        racunStevilke[key] = set1 = new HashSet<string>();
+                    set1.Add(racunSt);
                 }
                 // PREDRAC2
                 if (!reader.IsDBNull(3) && !reader.IsDBNull(4))
@@ -1510,12 +1541,18 @@ public class ObracunService
                     var key = $"{reader.GetString(3).Trim()}_{reader.GetInt32(4)}";
                     racunZneski[key] = racunZneski.GetValueOrDefault(key) + reader.GetDecimal(5);
                     racunObstaja.Add(key);
+                    if (!racunStevilke.TryGetValue(key, out var set2))
+                        racunStevilke[key] = set2 = new HashSet<string>();
+                    set2.Add(racunSt);
                 }
                 // POVEZAVA
                 if (!reader.IsDBNull(6) && !reader.IsDBNull(7))
                 {
                     var key = $"{reader.GetString(6).Trim()}_{reader.GetInt32(7)}";
                     racunObstaja.Add(key);
+                    if (!racunStevilke.TryGetValue(key, out var set3))
+                        racunStevilke[key] = set3 = new HashSet<string>();
+                    set3.Add(racunSt);
                 }
             }
         }
@@ -1528,6 +1565,9 @@ public class ObracunService
                 predracun.PlacanoIzRacunov = znesek;
             else if (racunObstaja.Contains(key))
                 predracun.PlacanoIzRacunov = 0.01m;
+
+            if (racunStevilke.TryGetValue(key, out var stevilke))
+                predracun.PovezaniRacuni = string.Join(", ", stevilke.OrderBy(s => s));
         }
 
         // 4. Minute iz predraèunov (postavke × OBRACUN_PAKET_MINUTE)
@@ -1610,9 +1650,6 @@ public class ObracunService
                 predracun.MinutePreostalo = Math.Max(0, predracun.Minute - porabljeno);
             }
         }
-
-        // Odstrani predraèune brez minut ali brez preostalih minut
-        result.RemoveAll(p => p.Minute <= 0 || p.MinutePreostalo <= 0);
 
         return result;
     }
@@ -2128,6 +2165,39 @@ public class ObracunService
                 n.NazivProdajalne = prodajalne[n.Prodajalna];
         }
 
+        // Pogodbe
+        if (partnerSifre.Count > 0)
+        {
+            var pogodbe = new Dictionary<int, List<string>>();
+            await using var cmd = new FbCommand($@"
+                SELECT PARTNER, ST_POGODBE
+                FROM FA_POGODBE
+                WHERE PARTNER IN ({partnerSifIn})
+                  AND VELJA_DO >= @DatumOd2
+                ORDER BY PARTNER, STEVILKA", connection);
+            cmd.Parameters.AddWithValue("@DatumOd2", datumOd);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var partner = reader.GetInt32(0);
+                var stPog = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
+                if (!string.IsNullOrWhiteSpace(stPog))
+                {
+                    if (!pogodbe.ContainsKey(partner))
+                        pogodbe[partner] = new();
+                    if (!pogodbe[partner].Contains(stPog))
+                        pogodbe[partner].Add(stPog);
+                }
+            }
+
+            foreach (var n in nalogi)
+            {
+                if (pogodbe.TryGetValue(n.Partner, out var pog))
+                    n.Pogodbe = string.Join(", ", pog);
+            }
+        }
+
         // KAJ_OBRACUNAM iz OBRACUN_DN
         {
             var stevilkeIn = string.Join(",", nalogi.Select(n => $"'{n.Stevilka.Replace("'", "''")}'"));
@@ -2427,5 +2497,205 @@ public class ObracunService
         }
 
         return nalogi.Values.OrderByDescending(n => n.Datum).ThenByDescending(n => n.ZacetekUra).ToList();
+    }
+
+    /// <summary>
+    /// Pridobi seštevek dela po šifri artikla — pregled kolièin iz OBRACUN_OSNUTEK_POS
+    /// z razdelitvijo korišèenja iz OBRACUN_OSNUTEK_NALOG_OBRACUN.
+    /// </summary>
+    public async Task<List<SestevekDelaGridDto>> GetSestevekDelaAsync(int leto, int mesec)
+    {
+        var rezultat = new List<SestevekDelaGridDto>();
+
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        await using var cmd = new FbCommand(@"
+            SELECT 
+                pos.ARTIKEL,
+                COALESCE(a.NAZIV, '') AS NAZIV_ARTIKLA,
+                COALESCE(a.ENOTA, '') AS ENOTA,
+                pos.KOLICINA_SKUPAJ,
+                COALESCE(nob.KOLICINA_NEOBRACUNANA, 0) AS KOLICINA_NEOBRACUNANA,
+                COALESCE(nob.KOLICINA_OBRACUNANA, 0) AS KOLICINA_OBRACUNANA,
+                COALESCE(nob.ODSTETE_ROCNO, 0) AS ODSTETE_ROCNO,
+                COALESCE(nob.ODSTETE_PARTNER_MINUTE, 0) AS ODSTETE_PARTNER_MINUTE,
+                COALESCE(nob.ODSTETE_PREDRACUN, 0) AS ODSTETE_PREDRACUN,
+                COALESCE(nob.ODSTETE_POGODBA, 0) AS ODSTETE_POGODBA,
+                COALESCE(nob.KOLICINA_FAKTURIRANA, 0) AS KOLICINA_FAKTURIRANA
+            FROM (
+                SELECT ARTIKEL, SUM(COALESCE(KOLICINA, 0)) AS KOLICINA_SKUPAJ
+                FROM OBRACUN_OSNUTEK_POS
+                WHERE LETO = @Leto AND MESEC = @Mesec
+                GROUP BY ARTIKEL
+            ) pos
+            LEFT JOIN FA_ARTIKEL a ON pos.ARTIKEL = a.SIFRA
+            LEFT JOIN (
+                SELECT 
+                    SIFRA_ARTIKLA,
+                    SUM(CASE WHEN OBRACUNAM = 0 THEN COALESCE(KOLICINA, 0) ELSE 0 END) AS KOLICINA_NEOBRACUNANA,
+                    SUM(CASE WHEN OBRACUNAM = 1 THEN COALESCE(KOLICINA, 0) ELSE 0 END) AS KOLICINA_OBRACUNANA,
+                    SUM(COALESCE(MINUTE_ODSTETE_ROCNO, 0)) AS ODSTETE_ROCNO,
+                    SUM(COALESCE(MINUTE_ODSTETE_PARTNER_MINUTE, 0)) AS ODSTETE_PARTNER_MINUTE,
+                    SUM(COALESCE(MINUTE_ODSTETE_PREDRACUN, 0)) AS ODSTETE_PREDRACUN,
+                    SUM(COALESCE(MINUTE_ODSTETE_POGODBA, 0)) AS ODSTETE_POGODBA,
+                    SUM(COALESCE(KOLICINA_FAKTURIRANA, 0)) AS KOLICINA_FAKTURIRANA
+                FROM OBRACUN_OSNUTEK_NALOG_OBRACUN
+                WHERE LETO = @Leto AND MESEC = @Mesec
+                GROUP BY SIFRA_ARTIKLA
+            ) nob ON pos.ARTIKEL = nob.SIFRA_ARTIKLA
+            ORDER BY pos.ARTIKEL", connection);
+
+        cmd.Parameters.AddWithValue("@Leto", leto);
+        cmd.Parameters.AddWithValue("@Mesec", mesec);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var odsteteRocno = reader.IsDBNull(6) ? 0 : reader.GetInt32(6);
+            var odstetePartnerMinute = reader.IsDBNull(7) ? 0 : reader.GetInt32(7);
+            var odstetePredracun = reader.IsDBNull(8) ? 0 : reader.GetInt32(8);
+            var odstetePogodba = reader.IsDBNull(9) ? 0 : reader.GetInt32(9);
+
+            rezultat.Add(new SestevekDelaGridDto
+            {
+                SifraArtikla = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim(),
+                NazivArtikla = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim(),
+                Enota = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim(),
+                KolicinaSkupaj = reader.IsDBNull(3) ? 0 : reader.GetDecimal(3),
+                KolicinaNeobracunana = reader.IsDBNull(4) ? 0 : reader.GetDecimal(4),
+                KolicinaObracunana = reader.IsDBNull(5) ? 0 : reader.GetDecimal(5),
+                OdsteteRocno = odsteteRocno,
+                OdstetePartnerMinute = odstetePartnerMinute,
+                OdstetePredracun = odstetePredracun,
+                OdstetePogodba = odstetePogodba,
+                OdsteteSkupaj = odsteteRocno + odstetePartnerMinute + odstetePredracun + odstetePogodba,
+                KolicinaFakturirana = reader.IsDBNull(10) ? 0 : reader.GetDecimal(10)
+            });
+        }
+
+        return rezultat;
+    }
+
+    /// <summary>
+    /// Pridobi pregled ur po serviserjih za izbrani mesec/leto.
+    /// Stolpci: serviser, st. nalogov, skupaj ure, ure NOM (SIF28=1), ure partner=23900 brez NOM.
+    /// </summary>
+    public async Task<List<PregledUrGridDto>> GetPregledUrAsync(int leto, int mesec)
+    {
+        var datumOd = new DateTime(leto, mesec, 1);
+        var datumDo = datumOd.AddMonths(1).AddDays(-1);
+
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        // 1. Preberi naloge (potnik, partner, NOM, zacetek/konec - za trajanje)
+        var nalogi = new List<(string Potnik, int Partner, int Nom, DateTime ZacetekUra, DateTime KonecUra, string Stevilka, int Leto)>();
+        await using (var cmd = new FbCommand(@"
+            SELECT POTNIK, PARTNER, SIF28, ZACETEK_URA, KONEC_URA, STEVILKA, LETO
+            FROM FA_DN_NALOG
+            WHERE ZACETEK_DATUM >= @DatumOd AND ZACETEK_DATUM <= @DatumDo", connection))
+        {
+            cmd.Parameters.AddWithValue("@DatumOd", datumOd);
+            cmd.Parameters.AddWithValue("@DatumDo", datumDo);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var potnik = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+                var partner = reader.GetInt32(1);
+                var nom = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
+                var zacetek = reader.IsDBNull(3) ? DateTime.MinValue : reader.GetDateTime(3);
+                var konec = reader.IsDBNull(4) ? DateTime.MinValue : reader.GetDateTime(4);
+                var stevilka = reader.IsDBNull(5) ? "" : reader.GetString(5).Trim();
+                var letoN = reader.GetInt32(6);
+                nalogi.Add((potnik, partner, nom, zacetek, konec, stevilka, letoN));
+            }
+        }
+
+        if (nalogi.Count == 0) return new();
+
+        // 2. Za helpdesk naloge (7 znakov, zacne se z 1) preberi trajanje iz FA_DN_NALOG_KNJ (SIFRA='047512')
+        var helpdeskNalogi = nalogi
+            .Where(n => n.Stevilka.Length == 7 && n.Stevilka.StartsWith("1"))
+            .Select(n => (n.Stevilka, n.Leto))
+            .Distinct()
+            .ToList();
+
+        var trajanjeSlovar = new Dictionary<(string, int), int>();
+        if (helpdeskNalogi.Count > 0)
+        {
+            var stevilkeIn = string.Join(",", helpdeskNalogi.Select(h => $"'{h.Stevilka.Replace("'", "''")}'"));
+            var letaIn = string.Join(",", helpdeskNalogi.Select(h => h.Leto).Distinct());
+
+            await using var cmd = new FbCommand($@"
+                SELECT STEVILKA, LETO, KOLICINA
+                FROM FA_DN_NALOG_KNJ
+                WHERE STEVILKA IN ({stevilkeIn}) AND LETO IN ({letaIn})
+                  AND TRIM(SIFRA) = '047512'", connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var key = (reader.GetString(0).Trim(), reader.GetInt32(1));
+                trajanjeSlovar[key] = (int)reader.GetDecimal(2);
+            }
+        }
+
+        // 3. Preberi nazive serviserjev
+        var potnikSifre = nalogi.Where(n => !string.IsNullOrEmpty(n.Potnik)).Select(n => n.Potnik).Distinct().ToList();
+        var potniki = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (potnikSifre.Count > 0)
+        {
+            var potnikIn = string.Join(",", potnikSifre.Select(s => $"'{s.Replace("'", "''")}'"));
+            await using var cmd = new FbCommand($"SELECT SIFRA, PRIIMEK, IME FROM FA_KOMERCIALIST WHERE SIFRA IN ({potnikIn})", connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var sifra = reader.GetString(0).Trim();
+                var priimek = reader.IsDBNull(1) ? "" : reader.GetString(1).Trim();
+                var ime = reader.IsDBNull(2) ? "" : reader.GetString(2).Trim();
+                potniki[sifra] = string.IsNullOrEmpty(ime) ? priimek : $"{priimek} {ime}".Trim();
+            }
+        }
+
+        // 4. Sestej po serviserju
+        var grupirano = new Dictionary<string, PregledUrGridDto>();
+        foreach (var n in nalogi)
+        {
+            decimal trajanjeMin;
+            if (trajanjeSlovar.TryGetValue((n.Stevilka, n.Leto), out var trajHd))
+            {
+                trajanjeMin = trajHd;
+            }
+            else
+            {
+                var t = (int)(n.KonecUra - n.ZacetekUra).TotalMinutes;
+                if (t < 0) t += 1440;
+                trajanjeMin = t;
+            }
+
+            var ure = trajanjeMin / 60m;
+
+            if (!grupirano.TryGetValue(n.Potnik, out var dto))
+            {
+                potniki.TryGetValue(n.Potnik, out var naziv);
+                dto = new PregledUrGridDto
+                {
+                    Serviser = n.Potnik,
+                    NazivServiserja = naziv ?? n.Potnik
+                };
+                grupirano[n.Potnik] = dto;
+            }
+
+            dto.SteviloNalogov++;
+            dto.SkupajUre += ure;
+            if (n.Nom == 1)
+                dto.UreNom += ure;
+            else if (n.Partner == 23900)
+                dto.UrePartner23900 += ure;
+        }
+
+        return grupirano.Values
+            .OrderBy(d => d.NazivServiserja)
+            .ToList();
     }
 }

@@ -16,12 +16,16 @@ public class PredracunGridDto
     public decimal? PlacanoIzRacunov { get; set; }
     
     /// <summary>
-    /// Prikaz stanja: "Potrjen", "Plaèano", "Delno" ali prazen
+    /// Prikaz stanja: "Potrjen", "Plaèano", "Delno", "Porabljeno" ali prazen
     /// </summary>
     public string StanjePrikaz
     {
         get
         {
+            // Minute porabljene
+            if (Minute > 0 && MinutePreostalo <= 0)
+                return "Porabljeno";
+
             // Preveri plaèila
             if (Placano.HasValue && Placano.Value >= 1 && ZnesekKoncni.HasValue && ZnesekKoncni.Value > 0)
             {
@@ -30,13 +34,13 @@ public class PredracunGridDto
                 else
                     return "Delno";
             }
-            
+
             // Stanje = 2 ali 5 je potrjen
             if (Stanje == 5)
                 return "Potrjen";
             if (Stanje == 2)
                 return "Plaèan vpisan2";
-            
+
             return "";
         }
     }
@@ -74,6 +78,11 @@ public class PredracunGridDto
     /// Preostale minute (Minute - poraba v preteklih mesecih).
     /// </summary>
     public int MinutePreostalo { get; set; }
+
+    /// <summary>
+    /// Številke povezanih raèunov (iz FA_RACUN).
+    /// </summary>
+    public string? PovezaniRacuni { get; set; }
 
     /// <summary>
     /// Unikaten kljuè za grid (Stevilka_Leto)

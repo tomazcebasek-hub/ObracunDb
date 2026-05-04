@@ -10,11 +10,14 @@ namespace ObracunDb.Data;
 /// <summary>
 /// LinqToDB DataConnection za ObracunIzvedbaService.
 /// </summary>
-public class ObracunLinqDb : DataConnection
+public class ObracunLinqDb : DataConnection, IDisposable, IAsyncDisposable
 {
+    private readonly FbConnection _ownedConnection;
+
     private ObracunLinqDb(FbConnection connection, string connectionString)
         : base(FirebirdTools.GetDataProvider(FirebirdVersion.AutoDetect, connectionString, connection, null), connection)
     {
+        _ownedConnection = connection;
     }
 
     public static ObracunLinqDb Create(string connectionString)
@@ -22,6 +25,18 @@ public class ObracunLinqDb : DataConnection
         var conn = new FbConnection(connectionString);
         conn.Open();
         return new ObracunLinqDb(conn, connectionString);
+    }
+
+    public new void Dispose()
+    {
+        base.Dispose();
+        _ownedConnection.Dispose();
+    }
+
+    public new async ValueTask DisposeAsync()
+    {
+        await base.DisposeAsync();
+        await _ownedConnection.DisposeAsync();
     }
 
     public ITable<FaDnNalog> FaDnNalog => this.GetTable<FaDnNalog>();
@@ -44,4 +59,5 @@ public class ObracunLinqDb : DataConnection
     public ITable<ObracunDnPredracun> ObracunDnPredracun => this.GetTable<ObracunDnPredracun>();
     public ITable<ObracunLoceniRacun> ObracunLoceniRacun => this.GetTable<ObracunLoceniRacun>();
     public ITable<ObracunOsnutekRacun> ObracunOsnutekRacun => this.GetTable<ObracunOsnutekRacun>();
+    public ITable<ObracunOsnutekSprememba> ObracunOsnutekSprememba => this.GetTable<ObracunOsnutekSprememba>();
 }

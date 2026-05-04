@@ -74,6 +74,30 @@ public class UporabnikService
     }
 
     /// <summary>
+    /// Pridobi uporabnika po uporabniškem imenu.
+    /// </summary>
+    public async Task<ObracunUporabnik?> GetByUsernameAsync(string uporabniskoIme)
+    {
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        await using var command = new FbCommand(@"
+            SELECT ID, UPORABNISKO_IME, GESLO_HASH, VLOGA, AKTIVEN, PRVA_PRIJAVA,
+                   DATUM_USTVARJEN, DATUM_ZADNJA_PRIJAVA
+            FROM OBRACUN_UPORABNIK
+            WHERE UPPER(UPORABNISKO_IME) = UPPER(@ime) AND AKTIVEN = 1",
+            connection);
+
+        command.Parameters.AddWithValue("@ime", uporabniskoIme);
+
+        await using var reader = await command.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+            return ReadEntity(reader);
+
+        return null;
+    }
+
+    /// <summary>
     /// Posodobi geslo uporabnika in oznaèi, da ni veè prva prijava.
     /// </summary>
     public async Task UpdatePasswordAsync(int userId, string novoGeslo)

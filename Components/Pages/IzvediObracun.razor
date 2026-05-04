@@ -44,6 +44,17 @@
                             </td>
                         </tr>
                     }
+                    <tr>
+                        <td style="width:120px; vertical-align:middle;"><strong>Debug partner</strong></td>
+                        <td>
+                            <DxSpinEdit @bind-Value="@debugPartner"
+                                        MinValue="0"
+                                        MaxValue="9999999"
+                                        style="width:250px;"
+                                        Enabled="@(!isRunning)" />
+                            <small class="text-muted ms-2">0 = brez debug izpisa</small>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -93,6 +104,7 @@
     int mesec;
     int leto;
     DateTime?[] prazniki = new DateTime?[5];
+    int debugPartner;
     string dnevnik = "";
 
     bool isRunning;
@@ -112,6 +124,8 @@
             if (!string.IsNullOrWhiteSpace(val) && DateTime.TryParse(val, out var dt))
                 prazniki[i] = dt;
         }
+
+        debugPartner = Parametri.GetInt(ObracunParam.DebugPartner);
 
         await NaloziDnevnikAsync();
     }
@@ -169,6 +183,9 @@
             await Parametri.SaveToDatabaseAsync(ParametriService.Praznik(i + 1), val);
         }
 
+        // Shrani debug partnerja v bazo
+        await Parametri.SaveToDatabaseAsync(ObracunParam.DebugPartner, debugPartner.ToString());
+
         var praznikiSet = new HashSet<DateTime>();
         foreach (var p in prazniki)
         {
@@ -180,7 +197,7 @@
         {
             await SetProgress(10, "Izvajam obračun...");
 
-            var rezultat = await Task.Run(() => ObracunIzvedi.IzvediObracun(mesec, leto, praznikiSet));
+            var rezultat = await Task.Run(() => ObracunIzvedi.IzvediObracun(mesec, leto, praznikiSet, debugPartner));
 
             await SetProgress(100, "Končano.");
 

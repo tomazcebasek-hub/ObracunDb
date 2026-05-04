@@ -15,7 +15,18 @@
     }
 </style>
 <SectionContent SectionName="PageHeaderExtra">
-    <span class="ms-3">Mesec obračuna: @mesec.ToString("D2")/@leto</span>
+    <span class="ms-3 d-inline-flex align-items-center">
+        Mesec obračuna:
+        <select class="form-select form-select-sm ms-2" style="width:auto;display:inline-block;"
+                value="@izbranoObdobje" @onchange="OnObdobjeChanged">
+            @foreach (var m in meseci)
+            {
+                <option value="@($"{m.Mesec:D2}/{m.Leto}")">
+                    @($"{m.Mesec:D2}/{m.Leto}")
+                </option>
+            }
+        </select>
+    </span>
 </SectionContent>
 
 @if (isLoading)
@@ -52,7 +63,7 @@ else
                         @{
                             var row = (SestevekGridDto)dataItem.DataItem;
                         }
-                        <SestevekDetailGrid Artikel="@row.Sifra" />
+                        <SestevekDetailGrid Artikel="@row.Sifra" Mesec="@mesec" Leto="@leto" />
                     </DetailRowTemplate>
                     <TotalSummary>
                         <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(SestevekGridDto.Sifra)" DisplayText="Artiklov: {0}" FooterColumnName="@nameof(SestevekGridDto.Sifra)" />
@@ -103,6 +114,8 @@ else
     decimal skupnaNetoVrednost;
     List<SestevekGridDto> podatki = new();
     List<SestevekGridDto> podatkiZaGraf = new();
+    List<(int Leto, int Mesec)> meseci = new();
+    string izbranoObdobje = "";
     bool isLoading = true;
     string? errorMessage;
 
@@ -110,7 +123,36 @@ else
     {
         mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
         leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+        izbranoObdobje = $"{mesec:D2}/{leto}";
 
+        meseci = await ObracunService.GetSestevekMeseciAsync();
+        if (meseci.Count > 0 && !meseci.Any(m => m.Leto == leto && m.Mesec == mesec))
+        {
+            leto = meseci[0].Leto;
+            mesec = meseci[0].Mesec;
+            izbranoObdobje = $"{mesec:D2}/{leto}";
+        }
+
+        await NaloziPodatke();
+    }
+
+    async Task OnObdobjeChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        var parts = val.Split('/');
+        if (parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var l))
+        {
+            mesec = m;
+            leto = l;
+            izbranoObdobje = val;
+            isLoading = true;
+            errorMessage = null;
+            await NaloziPodatke();
+        }
+    }
+
+    async Task NaloziPodatke()
+    {
         try
         {
             var (postavke, stPartnerjev) = await ObracunService.GetSestevekPoArtikluAsync(leto, mesec);

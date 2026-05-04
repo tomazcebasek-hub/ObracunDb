@@ -126,4 +126,21 @@ public class AuthService
         _currentUser = null;
         OnAuthenticationStateChanged?.Invoke();
     }
+
+    /// <summary>
+    /// Avtomatska prijava kot admin (samo za Development okolje).
+    /// </summary>
+    public async Task<bool> AutoLoginAsAdminAsync()
+    {
+        if (_isAuthenticated) return true;
+
+        var user = await _uporabnikService.GetByUsernameAsync("admin");
+        if (user == null || user.Aktiven != 1) return false;
+
+        _currentUser = user;
+        _mustChangePassword = false;
+        _isAuthenticated = true;
+        OnAuthenticationStateChanged?.Invoke();
+        return true;
+    }
 }

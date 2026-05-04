@@ -1,0 +1,121 @@
+@page "/pregled-ur"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject ObracunService ObracunService
+@inject ParametriService Parametri
+
+<PageTitle>Pregled ur</PageTitle>
+
+<style>
+    .pregled-ur-grid {
+        height: calc(100vh - 160px);
+    }
+</style>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <span>Mesec:</span>
+    <select class="form-select form-select-sm" style="width:auto;"
+            value="@izbranoObdobje" @onchange="OnObdobjeChanged">
+        @foreach (var m in meseci)
+        {
+            <option value="@($"{m.Mesec:D2}/{m.Leto}")">@($"{m.Mesec:D2}/{m.Leto}")</option>
+        }
+    </select>
+    <DxButton Text="Naloži" Click="NaloziPodatke" RenderStyle="ButtonRenderStyle.Primary" />
+</div>
+
+@if (isLoading)
+{
+    <p>Nalagam podatke...</p>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (podatki != null)
+{
+    <DxGrid Data="@podatki"
+            ShowAllRows="true"
+            CssClass="w-100 pregled-ur-grid"
+            ShowFooter="true"
+            ShowFilterRow="true"
+            AllowSort="true"
+            KeyFieldName="@nameof(PregledUrGridDto.Serviser)">
+        <Columns>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.Serviser)" Caption="Šifra" Width="80px" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.NazivServiserja)" Caption="Serviser" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SteviloNalogov)" Caption="Št. nalogov" Width="110px" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SkupajUre)" Caption="Skupaj ure" Width="120px" DisplayFormat="N2" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreNom)" Caption="Ure NOM" Width="120px" DisplayFormat="N2" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UrePartner23900)" Caption="Pos elektronček" Width="170px" DisplayFormat="N2" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke)" Caption="Ure stranke" Width="120px" DisplayFormat="N2" />
+        </Columns>
+        <TotalSummary>
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PregledUrGridDto.Serviser)" DisplayText="Serviserjev: {0}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.SteviloNalogov)" DisplayText="{0}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.SkupajUre)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreNom)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UrePartner23900)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreStranke)" DisplayText="{0:N2}" />
+        </TotalSummary>
+    </DxGrid>
+}
+
+@code {
+    int mesec;
+    int leto;
+    string izbranoObdobje = "";
+    List<(int Leto, int Mesec)> meseci = new();
+    List<PregledUrGridDto>? podatki;
+    bool isLoading;
+    string? errorMessage;
+
+    protected override void OnInitialized()
+    {
+        // Default = pretekli mesec
+        var prejsnji = DateTime.Today.AddMonths(-1);
+        leto = prejsnji.Year;
+        mesec = prejsnji.Month;
+        izbranoObdobje = $"{mesec:D2}/{leto}";
+
+        // Sestavi seznam mesecev (zadnjih 24 mesecev)
+        meseci = new();
+        var d = DateTime.Today;
+        for (int i = 0; i < 24; i++)
+        {
+            meseci.Add((d.Year, d.Month));
+            d = d.AddMonths(-1);
+        }
+    }
+
+    void OnObdobjeChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        var parts = val.Split('/');
+        if (parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var l))
+        {
+            mesec = m;
+            leto = l;
+            izbranoObdobje = val;
+        }
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            podatki = await ObracunService.GetPregledUrAsync(leto, mesec);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

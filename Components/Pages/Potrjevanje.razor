@@ -198,6 +198,7 @@ else
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Minute)" Caption="Min" Width="55px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.MinutePreostalo)" Caption="Preost." Width="65px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Status" Width="80px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.PovezaniRacuni)" Caption="Račun" Width="80px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Povezan)" Caption="Povezan" Width="65px" AllowSort="false" TextAlignment="GridTextAlignment.Center">
                                     <CellDisplayTemplate>
                                         @{
@@ -593,8 +594,6 @@ else
         if (e.DataItem is PotrjevanjeNalogDto row)
         {
             selectedNalog = row;
-            selectedPredracun = null;
-            predracunPostavke = new();
 
             try
             {
@@ -603,6 +602,8 @@ else
                 // Predračune naloži samo če se partner spremeni
                 if (row.Partner != _lastPredracunPartner)
                 {
+                    selectedPredracun = null;
+                    predracunPostavke = new();
                     predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, _mesec, _leto);
                     _lastPredracunPartner = row.Partner;
                 }

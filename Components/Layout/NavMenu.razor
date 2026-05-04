@@ -18,11 +18,18 @@
             <DxMenuItem Text="Obračun" IconCssClass="icon icon-scheduler">
                 <Items>
                     <DxMenuItem NavigateUrl="/izvedi-obracun" Text="Izvedi obračun" CssClass="@MenuItemCssClass("/izvedi-obracun")" IconCssClass="icon icon-scheduler"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/spremembe-kolicin" Text="Spremembe količin" CssClass="@MenuItemCssClass("/spremembe-kolicin")" IconCssClass="icon icon-counter"></DxMenuItem>
                     <DxMenuItem NavigateUrl="/koriscenje-predracuni" Text="Koriščenje predračunov" CssClass="@MenuItemCssClass("/koriscenje-predracuni")" IconCssClass="icon icon-chart"></DxMenuItem>
                     <DxMenuItem NavigateUrl="/sestevek" Text="Seštevek" CssClass="@MenuItemCssClass("/sestevek")" IconCssClass="icon icon-counter"></DxMenuItem>
+                    <DxMenuItem NavigateUrl="/sestevek-dela" Text="Seštevek dela" CssClass="@MenuItemCssClass("/sestevek-dela")" IconCssClass="icon icon-counter"></DxMenuItem>
                     <DxMenuItem NavigateUrl="/osnutki" Text="Osnutki" CssClass="@MenuItemCssClass("/osnutki")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
                     <DxMenuItem NavigateUrl="/zapis-v-faw" Text="Zapis v FAW" CssClass="@MenuItemCssClass("/zapis-v-faw")" IconCssClass="icon icon-scheduler"></DxMenuItem>
                     <DxMenuItem NavigateUrl="/zakljucek" Text="Zaključek meseca" CssClass="@MenuItemCssClass("/zakljucek")" IconCssClass="icon icon-counter"></DxMenuItem>
+                </Items>
+            </DxMenuItem>
+            <DxMenuItem Text="Pregledi" IconCssClass="icon icon-pivot-table">
+                <Items>
+                    <DxMenuItem NavigateUrl="/pregled-ur" Text="Pregled ur" CssClass="@MenuItemCssClass("/pregled-ur")" IconCssClass="icon icon-counter"></DxMenuItem>
                 </Items>
             </DxMenuItem>
             <DxMenuItem NavigateUrl="/koriscenje-pogodb" Text="Koriščenje pogodb" CssClass="@MenuItemCssClass("/koriscenje-pogodb")" IconCssClass="icon icon-chart"></DxMenuItem>
@@ -45,6 +52,7 @@
             {
                 <DxMenuItem NavigateUrl="/revizijska-sled" Text="Revizijska sled" CssClass="@MenuItemCssClass("/revizijska-sled")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
             }
+            <DxMenuItem NavigateUrl="/test" Text="TEST" CssClass="@MenuItemCssClass("/test")" IconCssClass="icon icon-counter"></DxMenuItem>
             @*<DxMenuItem NavigateUrl="/scheduler" Text="Scheduler" CssClass="@MenuItemCssClass("/scheduler")" IconCssClass="icon icon-scheduler"></DxMenuItem>*@
             @*<DxMenuItem NavigateUrl="/treelist" Text="TreeList" CssClass="@MenuItemCssClass("/treelist")" IconCssClass="icon icon-tree-list"></DxMenuItem>*@
             @*<DxMenuItem NavigateUrl="/parametri" Text="Uporabniški parametri" CssClass="@MenuItemCssClass("/parametri")" IconCssClass="icon icon-settings"></DxMenuItem>*@
