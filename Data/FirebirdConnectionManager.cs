@@ -28,7 +28,7 @@ public class FirebirdConnectionManager
                 Port = int.TryParse(IniConfigReader.GetValue(config, "Database", "Port", "3050"), out var port) ? port : 3050,
                 Pooling = true,
                 MinPoolSize = 0,
-                MaxPoolSize = 50,
+                MaxPoolSize = 200,
                 ServerType = FbServerType.Default
             };
 

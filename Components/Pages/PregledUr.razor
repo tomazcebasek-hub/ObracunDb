@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using ObracunDb.Data.DTOs
 @using ObracunDb.Services
+@using ObracunDb.Components
 @inject ObracunService ObracunService
 @inject ParametriService Parametri
 
@@ -43,13 +44,100 @@ else if (podatki != null)
             AllowSort="true"
             KeyFieldName="@nameof(PregledUrGridDto.Serviser)">
         <Columns>
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.Serviser)" Caption="Šifra" Width="80px" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.NazivServiserja)" Caption="Serviser" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SteviloNalogov)" Caption="Št. nalogov" Width="110px" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SkupajUre)" Caption="Skupaj ure" Width="120px" DisplayFormat="N2" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreNom)" Caption="Ure NOM" Width="120px" DisplayFormat="N2" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UrePartner23900)" Caption="Pos elektronček" Width="170px" DisplayFormat="N2" />
-            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke)" Caption="Ure stranke" Width="120px" DisplayFormat="N2" />
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.Serviser)" Caption="Šifra" Width="80px">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Vsi, ""))">@d.Serviser</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.NazivServiserja)" Caption="Serviser">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Vsi, ""))">@d.NazivServiserja</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SteviloNalogov)" Caption="Št. nalogov" Width="110px">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Vsi, ""))">@d.SteviloNalogov</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.SkupajUre)" Caption="Skupaj ure" Width="120px" DisplayFormat="N2">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Vsi, ""))">@d.SkupajUre.ToString("N2")</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreNom)" Caption="Ure NOM" Width="120px" DisplayFormat="N2">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Nom, "NOM"))">@d.UreNom.ToString("N2")</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UrePartner23900)" Caption="Pos elektronček" Width="170px" DisplayFormat="N2">
+                <CellDisplayTemplate Context="c">
+                    @{
+                        var d = (PregledUrGridDto)c.DataItem;
+                    }
+                    <span style="cursor:pointer;"
+                          @onclick="@(() => OpenPopup(d, PregledUrFilter.Partner23900, "Pos elektronček"))">@d.UrePartner23900.ToString("N2")</span>
+                </CellDisplayTemplate>
+            </DxGridDataColumn>
+            <DxGridBandColumn Caption="Ure stranke">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke_7_16)" Caption="07-16" Width="90px" DisplayFormat="N2">
+                        <CellDisplayTemplate Context="c">
+                            @{
+                                var d = (PregledUrGridDto)c.DataItem;
+                            }
+                            <span style="cursor:pointer;"
+                                  @onclick="@(() => OpenPopup(d, PregledUrFilter.Stranke_7_16, "Stranke 07-16"))">@d.UreStranke_7_16.ToString("N2")</span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke_16_22)" Caption="16-22" Width="90px" DisplayFormat="N2">
+                        <CellDisplayTemplate Context="c">
+                            @{
+                                var d = (PregledUrGridDto)c.DataItem;
+                            }
+                            <span style="cursor:pointer;"
+                                  @onclick="@(() => OpenPopup(d, PregledUrFilter.Stranke_16_22, "Stranke 16-22"))">@d.UreStranke_16_22.ToString("N2")</span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke_22_7)" Caption="22-07" Width="90px" DisplayFormat="N2">
+                        <CellDisplayTemplate Context="c">
+                            @{
+                                var d = (PregledUrGridDto)c.DataItem;
+                            }
+                            <span style="cursor:pointer;"
+                                  @onclick="@(() => OpenPopup(d, PregledUrFilter.Stranke_22_7, "Stranke 22-07"))">@d.UreStranke_22_7.ToString("N2")</span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="@nameof(PregledUrGridDto.UreStranke)" Caption="Skupaj" Width="100px" DisplayFormat="N2">
+                        <CellDisplayTemplate Context="c">
+                            @{
+                                var d = (PregledUrGridDto)c.DataItem;
+                            }
+                            <span style="cursor:pointer;"
+                                  @onclick="@(() => OpenPopup(d, PregledUrFilter.StrankeVse, "Stranke skupaj"))">@d.UreStranke.ToString("N2")</span>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
+                </Columns>
+            </DxGridBandColumn>
         </Columns>
         <TotalSummary>
             <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PregledUrGridDto.Serviser)" DisplayText="Serviserjev: {0}" />
@@ -57,10 +145,21 @@ else if (podatki != null)
             <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.SkupajUre)" DisplayText="{0:N2}" />
             <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreNom)" DisplayText="{0:N2}" />
             <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UrePartner23900)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreStranke_7_16)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreStranke_16_22)" DisplayText="{0:N2}" />
+            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreStranke_22_7)" DisplayText="{0:N2}" />
             <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrGridDto.UreStranke)" DisplayText="{0:N2}" />
         </TotalSummary>
     </DxGrid>
 }
+
+<PregledUrNalogiPopup @bind-Visible="popupVisible"
+                      Leto="@popupLeto"
+                      Mesec="@popupMesec"
+                      Serviser="@popupServiser"
+                      NazivServiserja="@popupNazivServiserja"
+                      Filter="@popupFilter"
+                      FilterOpis="@popupFilterOpis" />
 
 @code {
     int mesec;
@@ -70,6 +169,26 @@ else if (podatki != null)
     List<PregledUrGridDto>? podatki;
     bool isLoading;
     string? errorMessage;
+
+    // Popup state
+    bool popupVisible;
+    int popupLeto;
+    int popupMesec;
+    string popupServiser = "";
+    string? popupNazivServiserja;
+    PregledUrFilter popupFilter = PregledUrFilter.Vsi;
+    string? popupFilterOpis;
+
+    void OpenPopup(PregledUrGridDto d, PregledUrFilter filter, string filterOpis)
+    {
+        popupLeto = leto;
+        popupMesec = mesec;
+        popupServiser = d.Serviser;
+        popupNazivServiserja = d.NazivServiserja;
+        popupFilter = filter;
+        popupFilterOpis = filterOpis;
+        popupVisible = true;
+    }
 
     protected override void OnInitialized()
     {

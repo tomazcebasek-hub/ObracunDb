@@ -25,4 +25,7 @@ public class FaPredracun
 
     [Column("ZNESEK_KONCNI")]
     public decimal? ZnesekKoncni { get; set; }
+
+    [Column("KOMERCIALIST")]
+    public string? Komercialist { get; set; }
 }

@@ -5,6 +5,7 @@
 @inject ParametriService Parametri
 @inject ObracunIzvedbaService ObracunIzvedi
 @inject FawService FawService
+@inject LoceniRacuniService LoceniRacuniService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Izvedi obračun</PageTitle>
@@ -47,12 +48,20 @@
                     <tr>
                         <td style="width:120px; vertical-align:middle;"><strong>Debug partner</strong></td>
                         <td>
-                            <DxSpinEdit @bind-Value="@debugPartner"
-                                        MinValue="0"
-                                        MaxValue="9999999"
-                                        style="width:250px;"
+                            <DxComboBox Data="@vsiPartnerji"
+                                        Value="@debugPartner"
+                                        ValueChanged="@((int v) => debugPartner = v)"
+                                        TextFieldName="DisplayName"
+                                        ValueFieldName="Sifra"
+                                        TData="ObracunDb.Services.PartnerFilterDto"
+                                        TValue="int"
+                                        NullText="Brez debug izpisa..."
+                                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                        ListRenderMode="ListRenderMode.Virtual"
+                                        FilteringMode="DataGridFilteringMode.Contains"
+                                        style="width:350px;"
                                         Enabled="@(!isRunning)" />
-                            <small class="text-muted ms-2">0 = brez debug izpisa</small>
+                            <small class="text-muted ms-2">prazno = brez debug izpisa</small>
                         </td>
                     </tr>
                 </tbody>
@@ -106,6 +115,7 @@
     DateTime?[] prazniki = new DateTime?[5];
     int debugPartner;
     string dnevnik = "";
+    List<ObracunDb.Services.PartnerFilterDto> vsiPartnerji = new();
 
     bool isRunning;
     string statusText = "";
@@ -126,6 +136,15 @@
         }
 
         debugPartner = Parametri.GetInt(ObracunParam.DebugPartner);
+
+        try
+        {
+            vsiPartnerji = await LoceniRacuniService.GetAllPartnerjeAsync();
+        }
+        catch
+        {
+            vsiPartnerji = new();
+        }
 
         await NaloziDnevnikAsync();
     }

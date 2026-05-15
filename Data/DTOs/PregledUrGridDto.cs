@@ -11,5 +11,11 @@ public class PregledUrGridDto
     public decimal SkupajUre { get; set; }
     public decimal UreNom { get; set; }
     public decimal UrePartner23900 { get; set; }
-    public decimal UreStranke => SkupajUre - UreNom - UrePartner23900;
+
+    // Razčlenitev ur strank po tarifah (07-16 / 16-22 / 22-07)
+    public decimal UreStranke_7_16 { get; set; }
+    public decimal UreStranke_16_22 { get; set; }
+    public decimal UreStranke_22_7 { get; set; }
+
+    public decimal UreStranke => UreStranke_7_16 + UreStranke_16_22 + UreStranke_22_7;
 }

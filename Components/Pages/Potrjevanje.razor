@@ -53,8 +53,8 @@ else
                         FocusedRowChanged="@OnNalogSelected"
                         AllowSort="true"
                         CssClass="w-100"
-                        PageSize="0"
-                        VirtualScrollingEnabled="true"
+                        PageSize="@int.MaxValue"
+                        PagerVisible="false"
                         style="height: 100%">
                     <Columns>
                         <DxGridDataColumn FieldName="@nameof(PotrjevanjeNalogDto.Stevilka)" Caption="Številka" Width="90px" />
@@ -238,12 +238,11 @@ else
                 </div>
             </div>
         </div>
-
         <!-- Vrstica z gumbi -->
         <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0; flex-shrink: 0; font-size: 0.85rem;">
             <div style="display: flex; align-items: center; gap: 4px;">
                 <DxCheckBox Checked="@samoNepotrjeni"
-                            CheckedChanged="@((bool v) => { samoNepotrjeni = v; })" />
+                            CheckedChanged="@((bool v) => OnSamoNepotrjeniChanged(v))" />
                 <span>Samo nepotrjeni</span>
             </div>
             @if (selectedNalog != null)
@@ -478,6 +477,7 @@ else
 @code {
     IGrid? gridNalogi;
     List<PotrjevanjeNalogDto> nalogi = new();
+    List<PotrjevanjeNalogDto> filteredNalogi = new();
     List<PotrjevanjeNalogPozDto> nalogPostavke = new();
     List<PredracunGridDto> predracuni = new();
     List<PredracunKnjizbaGridDto> predracunPostavke = new();
@@ -488,6 +488,8 @@ else
     int _mesec;
     int _leto;
     int _lastPredracunPartner;
+    bool _nalogLoading;
+    (string Stevilka, int Leto)? _lastSelectedNalogKey;
     bool samoNepotrjeni = true;
     DateTime filterDatumOd;
     DateTime filterDatumDo;
@@ -523,9 +525,20 @@ else
 
     record PovezavaSprememba(string Stevilka, int Leto, bool JeDodana);
 
-    List<PotrjevanjeNalogDto> filteredNalogi => samoNepotrjeni
-        ? nalogi.Where(n => !n.Pregledan).ToList()
-        : nalogi;
+    void ApplyNalogFilter()
+    {
+        filteredNalogi = samoNepotrjeni
+            ? nalogi.Where(n => !n.Pregledan).ToList()
+            : nalogi;
+    }
+
+    void OnSamoNepotrjeniChanged(bool value)
+    {
+        samoNepotrjeni = value;
+        selectedNalog = null;
+        _lastSelectedNalogKey = null;
+        ApplyNalogFilter();
+    }
 
     static readonly List<KajObracunamOption> kajObracunamOptions =
     [
@@ -539,20 +552,24 @@ else
 
     record KajObracunamOption(KajObracunam Value, string Text);
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
+        _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
+        _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
+
+        filterDatumOd = new DateTime(_leto, _mesec, 1);
+        filterDatumDo = filterDatumOd.AddMonths(1).AddDays(-1);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
         try
         {
-            _mesec = Parametri.GetInt(ObracunParam.MesecObracuna);
-            _leto = Parametri.GetInt(ObracunParam.LetoObracuna);
-
-            filterDatumOd = new DateTime(_leto, _mesec, 1);
-            filterDatumDo = filterDatumOd.AddMonths(1).AddDays(-1);
-
-            // Ustvari manjkajoče OBRACUN_DN zapise pred nalaganjem
             await ObracunService.UstvariManjkajoceObracunDnAsync(_leto, _mesec);
-
             nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(filterDatumOd, filterDatumDo);
+            ApplyNalogFilter();
         }
         catch (Exception ex)
         {
@@ -561,6 +578,7 @@ else
         finally
         {
             isLoading = false;
+            StateHasChanged();
         }
     }
 
@@ -574,10 +592,12 @@ else
         predracuni = new();
         predracunPostavke = new();
         _lastPredracunPartner = 0;
+        _lastSelectedNalogKey = null;
 
         try
         {
             nalogi = await ObracunService.GetNalogiZaPotrjevanjeAsync(filterDatumOd, filterDatumDo);
+            ApplyNalogFilter();
         }
         catch (Exception ex)
         {
@@ -593,7 +613,17 @@ else
     {
         if (e.DataItem is PotrjevanjeNalogDto row)
         {
+            // Preskoči, če je izbran isti nalog (FocusedRowChanged se sproži tudi ob osvežitvah)
+            var key = (row.Stevilka, row.Leto);
+            if (_lastSelectedNalogKey.HasValue && _lastSelectedNalogKey.Value == key)
+                return;
+
+            // Reentrancy guard: če prejšnje nalaganje še teče, ne odpiraj novih povezav vzporedno
+            if (_nalogLoading) return;
+
+            _nalogLoading = true;
             selectedNalog = row;
+            _lastSelectedNalogKey = key;
 
             try
             {
@@ -608,12 +638,25 @@ else
                     _lastPredracunPartner = row.Partner;
                 }
 
+                // Avtomatsko izberi prvi predračun in naloži njegove postavke,
+                // ker FocusedRowChanged se ob osvežitvi podatkov ne sproži zanesljivo.
+                if (predracuni.Count > 0 && selectedPredracun == null)
+                {
+                    selectedPredracun = predracuni[0];
+                    predracunPostavke = await ObracunService.GetPostavkePredracunaAsync(
+                        selectedPredracun.Stevilka, selectedPredracun.Leto);
+                }
+
                 // Naloži stanje povezav za ta nalog
                 await NaloziPovezanStanje(row.Stevilka, row.Leto);
             }
             catch (Exception ex)
             {
                 errorMessage = $"Napaka: {ex.Message}";
+            }
+            finally
+            {
+                _nalogLoading = false;
             }
         }
     }
@@ -810,6 +853,7 @@ else
 
             if (naslednji != null && gridNalogi != null)
             {
+                _lastSelectedNalogKey = null;
                 selectedNalog = naslednji;
                 selectedPredracun = null;
                 predracunPostavke = new();
@@ -822,6 +866,7 @@ else
                 }
 
                 await NaloziPovezanStanje(naslednji.Stevilka, naslednji.Leto);
+                await gridNalogi.SetFocusedDataItemAsync(naslednji);
             }
         }
         catch (Exception ex)

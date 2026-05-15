@@ -1,0 +1,180 @@
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject ObracunService ObracunService
+
+<DxPopup @bind-Visible="@visibleInternal"
+         HeaderText="@headerText"
+         Width="98vw"
+         Height="95vh"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div style="display: flex; flex-direction: column; height: calc(95vh - 120px);">
+            @if (isLoading)
+            {
+                <p>Nalagam naloge...</p>
+            }
+            else if (errorMessage != null)
+            {
+                <div class="alert alert-danger">@errorMessage</div>
+            }
+            else if (nalogi != null && nalogi.Count > 0)
+            {
+                <div style="flex: 2; min-height: 0; overflow: hidden;">
+                    <DxGrid Data="@nalogi"
+                            KeyFieldName="@nameof(PregledUrNalogDto.Key)"
+                            CssClass="w-100"
+                            PageSize="0"
+                            VirtualScrollingEnabled="true"
+                            ShowFilterRow="true"
+                            ShowFooter="true"
+                            FocusedRowEnabled="true"
+                            FocusedRowChanged="@OnFocusedRowChanged"
+                            style="height: 100%;">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="95px" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.TipDneva)" Caption="Vrsta" Width="110px">
+                                <FilterRowCellTemplate Context="frc">
+                                    <DxComboBox Data="@tipiDneva"
+                                                Value="@(frc.FilterRowValue as string)"
+                                                ValueChanged="@((string v) => frc.FilterRowValue = v)"
+                                                NullText="(vse)"
+                                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                                CssClass="w-100" />
+                                </FilterRowCellTemplate>
+                            </DxGridDataColumn>
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.Stevilka)" Caption="Številka" Width="90px" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.ZacetekUra)" Caption="Začetek" DisplayFormat="HH:mm" Width="75px" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.KonecUra)" Caption="Konec" DisplayFormat="HH:mm" Width="75px" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.Partner)" Caption="Partner" Width="80px" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.NazivPartnerja)" Caption="Naziv partnerja">
+                                <FilterRowCellTemplate Context="frc">
+                                    <DxComboBox Data="@naziviPartnerjev"
+                                                Value="@(frc.FilterRowValue as string)"
+                                                ValueChanged="@((string v) => frc.FilterRowValue = v)"
+                                                NullText="(vsi)"
+                                                FilteringMode="DataGridFilteringMode.Contains"
+                                                ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                                CssClass="w-100" />
+                                </FilterRowCellTemplate>
+                            </DxGridDataColumn>
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.SkupajUre)" Caption="Skupaj ure" Width="100px" DisplayFormat="N2" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UreNom)" Caption="Ure NOM" Width="95px" DisplayFormat="N2" />
+                            <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UrePartner23900)" Caption="Pos elektronček" Width="140px" DisplayFormat="N2" />
+                            <DxGridBandColumn Caption="Ure stranke">
+                                <Columns>
+                                    <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UreStranke_7_16)" Caption="07-16" Width="80px" DisplayFormat="N2" />
+                                    <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UreStranke_16_22)" Caption="16-22" Width="80px" DisplayFormat="N2" />
+                                    <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UreStranke_22_7)" Caption="22-07" Width="80px" DisplayFormat="N2" />
+                                    <DxGridDataColumn FieldName="@nameof(PregledUrNalogDto.UreStranke)" Caption="Skupaj" Width="90px" DisplayFormat="N2" />
+                                </Columns>
+                            </DxGridBandColumn>
+                        </Columns>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PregledUrNalogDto.Stevilka)" DisplayText="Nalogov: {0}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.SkupajUre)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UreNom)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UrePartner23900)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UreStranke_7_16)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UreStranke_16_22)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UreStranke_22_7)" DisplayText="{0:N2}" />
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PregledUrNalogDto.UreStranke)" DisplayText="{0:N2}" />
+                        </TotalSummary>
+                    </DxGrid>
+                </div>
+                <div style="flex: 1; min-height: 0; border-top: 1px solid #dee2e6; padding-top: 8px; margin-top: 8px; display: flex; flex-direction: column;">
+                    <label class="form-label fw-bold mb-1">
+                        Opis naloga@(selectedNalog != null ? $" — {selectedNalog.Stevilka}/{selectedNalog.LetoNaloga}" : "")
+                    </label>
+                    <textarea class="form-control" readonly
+                              style="flex: 1; min-height: 0; resize: none; font-family: monospace; font-size: 0.85rem;"
+                              >@(selectedNalog?.Opis ?? "")</textarea>
+                </div>
+            }
+            else
+            {
+                <p class="text-muted">Ni nalogov za izbrane kriterije.</p>
+            }
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => Close())" />
+    </FooterContentTemplate>
+</DxPopup>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int Leto { get; set; }
+    [Parameter] public int Mesec { get; set; }
+    [Parameter] public string Serviser { get; set; } = "";
+    [Parameter] public string? NazivServiserja { get; set; }
+    [Parameter] public PregledUrFilter Filter { get; set; } = PregledUrFilter.Vsi;
+    [Parameter] public string? FilterOpis { get; set; }
+
+    List<PregledUrNalogDto>? nalogi;
+    PregledUrNalogDto? selectedNalog;
+    bool isLoading;
+    string? errorMessage;
+    string headerText = "Nalogi";
+    bool visibleInternal;
+
+    static readonly string[] tipiDneva = new[] { "Delavnik", "Vikend", "Praznik" };
+    List<string> naziviPartnerjev = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !visibleInternal)
+        {
+            visibleInternal = true;
+            selectedNalog = null;
+            var prikazServiser = string.IsNullOrEmpty(NazivServiserja) ? Serviser : $"{Serviser} — {NazivServiserja}";
+            var filtrText = string.IsNullOrEmpty(FilterOpis) ? "" : $" / {FilterOpis}";
+            headerText = $"Nalogi — {prikazServiser} — {Mesec:D2}/{Leto}{filtrText}";
+            await NaloziPodatke();
+        }
+        else if (!Visible && visibleInternal)
+        {
+            visibleInternal = false;
+        }
+    }
+
+    void OnFocusedRowChanged(GridFocusedRowChangedEventArgs e)
+    {
+        selectedNalog = e.DataItem as PregledUrNalogDto;
+    }
+
+    async Task NaloziPodatke()
+    {
+        isLoading = true;
+        errorMessage = null;
+        nalogi = null;
+        selectedNalog = null;
+        try
+        {
+            nalogi = await ObracunService.GetPregledUrNalogiAsync(Leto, Mesec, Serviser, Filter);
+            naziviPartnerjev = nalogi?
+                .Select(n => n.NazivPartnerja)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct()
+                .OrderBy(s => s)
+                .ToList() ?? new();
+            selectedNalog = nalogi?.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task Close()
+    {
+        visibleInternal = false;
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

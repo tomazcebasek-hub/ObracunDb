@@ -10,6 +10,8 @@ public class PredracunGridDto
     public DateTime? Datum { get; set; }
     public int SifraKupca { get; set; }
     public string? NazivPartnerja { get; set; }
+    public string? SifraKomercialista { get; set; }
+    public string? NazivKomercialista { get; set; }
     public int? Stanje { get; set; }
     public decimal? ZnesekKoncni { get; set; }
     public decimal? Placano { get; set; }

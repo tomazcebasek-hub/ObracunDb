@@ -32,9 +32,12 @@ public class PredracunService
             SELECT 
                 p.STEVILKA, p.LETO, p.DATUM, p.SIFRA_KUPCA, p.STANJE, p.ZNESEK_KONCNI,
                 pa.NAZIV,
-                pl.VSOTA_PLACIL
+                pl.VSOTA_PLACIL,
+                p.KOMERCIALIST,
+                k.PRIIMEK, k.IME
             FROM FA_PREDRACUN p
             LEFT JOIN PARTNER pa ON p.SIFRA_KUPCA = pa.SIFRA
+            LEFT JOIN FA_KOMERCIALIST k ON p.KOMERCIALIST = k.SIFRA
             LEFT JOIN (
                 SELECT PREDRACUN_STEVILKA, PREDRACUN_LETO, SUM(ZNESEK + COALESCE(SCONTO, 0)) AS VSOTA_PLACIL
                 FROM FA_RACUN_PLACILO
@@ -53,6 +56,13 @@ public class PredracunService
 
         while (await reader.ReadAsync())
         {
+            var sifraKom = reader.IsDBNull(8) ? null : reader.GetString(8).Trim();
+            var priimek = reader.IsDBNull(9) ? null : reader.GetString(9).Trim();
+            var ime = reader.IsDBNull(10) ? null : reader.GetString(10).Trim();
+            string? nazivKom = null;
+            if (!string.IsNullOrEmpty(priimek) || !string.IsNullOrEmpty(ime))
+                nazivKom = string.IsNullOrEmpty(ime) ? priimek : $"{priimek} {ime}".Trim();
+
             result.Add(new PredracunGridDto
             {
                 Stevilka = reader.GetString(0).Trim(),
@@ -63,7 +73,9 @@ public class PredracunService
                 ZnesekKoncni = reader.IsDBNull(5) ? null : reader.GetDecimal(5),
                 NazivPartnerja = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
                 Placano = reader.IsDBNull(7) ? null : reader.GetDecimal(7),
-                PlacanoIzRacunov = 0
+                PlacanoIzRacunov = 0,
+                SifraKomercialista = sifraKom,
+                NazivKomercialista = nazivKom
             });
         }
 
