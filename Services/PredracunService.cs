@@ -70,9 +70,9 @@ public class PredracunService
                 Datum = reader.IsDBNull(2) ? null : reader.GetDateTime(2),
                 SifraKupca = reader.GetInt32(3),
                 Stanje = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                ZnesekKoncni = reader.IsDBNull(5) ? null : reader.GetDecimal(5),
+                ZnesekKoncni = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5),
                 NazivPartnerja = reader.IsDBNull(6) ? null : reader.GetString(6).Trim(),
-                Placano = reader.IsDBNull(7) ? null : reader.GetDecimal(7),
+                Placano = reader.IsDBNull(7) ? 0m : reader.GetDecimal(7),
                 PlacanoIzRacunov = 0,
                 SifraKomercialista = sifraKom,
                 NazivKomercialista = nazivKom

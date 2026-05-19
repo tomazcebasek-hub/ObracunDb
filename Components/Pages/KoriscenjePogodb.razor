@@ -2,6 +2,8 @@
 @rendermode InteractiveServer
 @using FirebirdSql.Data.FirebirdClient
 @using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
 @inject ObracunDb.Data.FirebirdConnectionManager ConnectionManager
 @inject ObracunDb.Services.AuthService AuthService
 @inject NavigationManager NavigationManager
@@ -12,6 +14,11 @@
 
     <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
         <h5 style="margin: 0;">Koriščenje pogodb</h5>
+        <span>Mesec:</span>
+        <DxSpinEdit @bind-Value="izbranMesec" MinValue="1" MaxValue="12" style="width:80px" />
+        <span>Leto:</span>
+        <DxSpinEdit @bind-Value="izbranoLeto" MinValue="2000" MaxValue="2100" style="width:100px" />
+        <DxButton Text="Naloži" Click="NaloziPodatke" RenderStyle="ButtonRenderStyle.Primary" />
         @if (isLoading)
         {
             <span class="text-muted">Nalagam...</span>
@@ -21,7 +28,7 @@
     @if (partnerji.Count > 0)
     {
         <div style="flex: 1; overflow: hidden; min-height: 0;">
-            <DxGrid Data="@partnerji"
+            <DxGrid Data="@FilteredPartnerji"
                     KeyFieldName="@nameof(KoriscenjePogodbDto.Partner)"
                     ShowFilterRow="true"
                     CssClass="w-100"
@@ -33,16 +40,45 @@
                     <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.NazivPartnerja)" Caption="Partner" MinWidth="140" />
                     <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.SteviloPogodb)" Caption="Št. pogodb" Width="100px" />
                     <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.VsotaMinut)" Caption="Min/mesec" Width="100px" />
-                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.SkupajRazpolozljivih)" Caption="Razpoložljivo" Width="110px" />
-                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.KoriscenoMinut)" Caption="Koriščeno" Width="100px" />
-                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.ProcentKoriscenja)" Caption="%" Width="80px" DisplayFormat="N1" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.Znesek)" Caption="Znesek" Width="110px" DisplayFormat="N2" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.Interval)" Caption="Interval" Width="140px">
+                        <FilterRowCellTemplate>
+                            <div style="position:relative;">
+                                <button type="button" class="btn btn-light btn-sm w-100 text-start"
+                                        @onclick="@(() => intervalDropdownOpen = !intervalDropdownOpen)">
+                                    @IntervalFilterCaption()
+                                </button>
+                                @if (intervalDropdownOpen)
+                                {
+                                    <div style="position:absolute; top:100%; left:0; z-index:1050; background:white; border:1px solid #ccc; padding:8px; min-width:160px; max-height:260px; overflow:auto; box-shadow:0 2px 6px rgba(0,0,0,0.15);">
+                                        @foreach (var interval in intervalLookup)
+                                        {
+                                            <div style="padding:2px 0;">
+                                                <DxCheckBox Checked="@filterInterval.Contains(interval)"
+                                                            CheckedChanged="@((bool v) => OnIntervalFilterChanged(interval, v))">
+                                                    @interval
+                                                </DxCheckBox>
+                                            </div>
+                                        }
+                                        <div style="margin-top:6px; display:flex; gap:4px;">
+                                            <DxButton Text="Počisti" RenderStyle="ButtonRenderStyle.Secondary" Click="@ClearIntervalFilter" />
+                                            <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Light" Click="@(() => intervalDropdownOpen = false)" />
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </FilterRowCellTemplate>
+                    </DxGridDataColumn>
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.ZnesekIzbranMesec)" Caption="Izbran mesec" Width="120px" DisplayFormat="N2" />
+                    <DxGridDataColumn FieldName="@nameof(KoriscenjePogodbDto.Racun)" Caption="Račun" Width="110px" DisplayFormat="N2" />
                 </Columns>
                 <TotalSummary>
                     <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(KoriscenjePogodbDto.Partner)" DisplayText="Partnerjev: {0}" />
                     <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.SteviloPogodb)" />
                     <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.VsotaMinut)" />
-                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.SkupajRazpolozljivih)" />
-                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.KoriscenoMinut)" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.Znesek)" ValueDisplayFormat="N2" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.ZnesekIzbranMesec)" ValueDisplayFormat="N2" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(KoriscenjePogodbDto.Racun)" ValueDisplayFormat="N2" />
                 </TotalSummary>
             </DxGrid>
         </div>
@@ -52,9 +88,21 @@
 @code {
     bool isLoading;
     List<KoriscenjePogodbDto> partnerji = new();
+    List<string> intervalLookup = new();
+    HashSet<string> filterInterval = new();
+    bool intervalDropdownOpen;
+    int izbranMesec;
+    int izbranoLeto;
+
+    List<KoriscenjePogodbDto> FilteredPartnerji => filterInterval.Count == 0
+        ? partnerji
+        : partnerji.Where(p => filterInterval.Contains(p.Interval ?? string.Empty)).ToList();
 
     protected override async Task OnInitializedAsync()
     {
+        var danes = DateTime.Today;
+        izbranMesec = danes.Month;
+        izbranoLeto = danes.Year;
         await NaloziPodatke();
     }
 
@@ -69,12 +117,13 @@
             await connection.OpenAsync();
 
             var today = DateTime.Today;
+            var izbranDatum = new DateTime(izbranoLeto, izbranMesec, 1);
 
             // 1. Naloži veljavne ali prihodnje pogodbe (za štetje pogodb in mesečne minute)
-            var contracts = new List<(int Partner, int StMinut)>();
+            var contracts = new List<(int Partner, int Stevilka, int Leto, int StMinut, DateTime? PrviRacunOd)>();
 
             await using (var cmd = new FbCommand(@"
-                SELECT PARTNER, COALESCE(ST_MINUT, 0)
+                SELECT PARTNER, STEVILKA, LETO, COALESCE(ST_MINUT, 0), PRVI_RACUN_OD
                 FROM FA_POGODBE
                 WHERE VELJA_DO IS NULL OR VELJA_DO >= @Today
                    OR PRVI_RACUN_OD > @Today", connection))
@@ -82,7 +131,7 @@
                 cmd.Parameters.AddWithValue("@Today", today);
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                    contracts.Add((reader.GetInt32(0), reader.GetInt32(1)));
+                    contracts.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3), reader.IsDBNull(4) ? null : reader.GetDateTime(4)));
             }
 
             if (contracts.Count == 0) return;
@@ -98,40 +147,53 @@
             }
 
             var partnerIn = string.Join(",", partnerPogodbe.Keys);
+            var pogodbeFilter = string.Join(" OR ", contracts.Select(c => $"(STEVILKA = {c.Stevilka} AND LETO = {c.Leto})").Distinct());
 
-            // 3. Razpoložljive minute iz OBRACUN_OSNUTEK (PLUS_MINUTE_POGODBA sešteto po mesecih)
-            var razpolozljive = new Dictionary<int, int>();
+            var pogodbePostavke = new Dictionary<(int Stevilka, int Leto), List<(decimal Znesek, string Interval, string? Meseci)>>();
             await using (var cmd = new FbCommand($@"
-                SELECT PARTNER, SUM(PLUS_MINUTE_POGODBA)
-                FROM OBRACUN_OSNUTEK
-                WHERE PARTNER IN ({partnerIn})
-                GROUP BY PARTNER", connection))
+                SELECT STEVILKA, LETO, COALESCE(KOLICINA, 0), COALESCE(PRODAJNA_CENA, 0), COALESCE(RABAT1, 0), MESECI
+                FROM FA_POGODBE_POS
+                WHERE {pogodbeFilter}", connection))
             {
                 await using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    if (!reader.IsDBNull(1))
-                        razpolozljive[reader.GetInt32(0)] = reader.GetInt32(1);
+                    var stevilka = reader.GetInt32(0);
+                    var leto = reader.GetInt32(1);
+                    var kolicina = reader.GetDecimal(2);
+                    var cena = reader.GetDecimal(3);
+                    var rabat = reader.GetDecimal(4);
+                    var meseci = reader.IsDBNull(5) ? null : reader.GetString(5);
+                    var znesek = kolicina * cena * (1 - rabat / 100);
+                    var interval = PogodbaIntervalHelper.DobiInterval(meseci);
+
+                    var key = (stevilka, leto);
+                    if (!pogodbePostavke.TryGetValue(key, out var list))
+                        pogodbePostavke[key] = list = new List<(decimal Znesek, string Interval, string? Meseci)>();
+                    list.Add((znesek, interval, meseci));
                 }
             }
 
-            // 4. Koriščene minute iz OBRACUN_OSNUTEK_NALOG_OBRACUN
-            var usedMinutes = new Dictionary<int, int>();
-            await using (var cmd = new FbCommand($@"
-                SELECT PARTNER, SUM(COALESCE(MINUTE_ODSTETE_POGODBA, 0))
-                FROM OBRACUN_OSNUTEK_NALOG_OBRACUN
-                WHERE PARTNER IN ({partnerIn})
-                GROUP BY PARTNER", connection))
-            {
-                await using var reader = await cmd.ExecuteReaderAsync();
-                while (await reader.ReadAsync())
+            var pogodbePodatki = contracts.ToDictionary(
+                c => (c.Stevilka, c.Leto),
+                c =>
                 {
-                    if (!reader.IsDBNull(1))
-                        usedMinutes[reader.GetInt32(0)] = reader.GetInt32(1);
-                }
-            }
+                    var postavke = pogodbePostavke.GetValueOrDefault((c.Stevilka, c.Leto)) ?? new List<(decimal Znesek, string Interval, string? Meseci)>();
+                    var intervali = postavke
+                        .Select(p => p.Interval)
+                        .Distinct()
+                        .OrderBy(i => i)
+                        .ToList();
+                    var seJeZacela = !c.PrviRacunOd.HasValue || new DateTime(c.PrviRacunOd.Value.Year, c.PrviRacunOd.Value.Month, 1) <= izbranDatum;
+                    return (
+                        Znesek: postavke.Sum(p => p.Znesek),
+                        Interval: $"({string.Join(",", intervali)})",
+                        ZnesekIzbranMesec: seJeZacela
+                            ? postavke.Where(p => PogodbaIntervalHelper.JeMesecVkljucen(p.Meseci, izbranMesec)).Sum(p => p.Znesek)
+                            : 0);
+                });
 
-            // 5. Nazivi partnerjev
+            // 3. Nazivi partnerjev
             var nazivi = new Dictionary<int, string?>();
             await using (var cmd = new FbCommand($"SELECT SIFRA, NAZIV FROM PARTNER WHERE SIFRA IN ({partnerIn})", connection))
             {
@@ -140,21 +202,55 @@
                     nazivi[reader.GetInt32(0)] = reader.IsDBNull(1) ? null : reader.GetString(1).Trim();
             }
 
-            // 6. Sestavi rezultat
+            var racuni = new Dictionary<int, decimal>();
+            await using (var cmd = new FbCommand($@"
+                SELECT PARTNER, SUM(COALESCE(KOLICINA, 0) * COALESCE(CENA, 0) * (1 - COALESCE(RABAT, 0) / 100))
+                FROM OBRACUN_OSNUTEK_POS
+                WHERE MESEC = @Mesec
+                  AND LETO = @Leto
+                  AND PARTNER IN ({partnerIn})
+                  AND TIP_POSTAVKE = @TipPostavke
+                GROUP BY PARTNER", connection))
+            {
+                cmd.Parameters.AddWithValue("@Mesec", izbranMesec);
+                cmd.Parameters.AddWithValue("@Leto", izbranoLeto);
+                cmd.Parameters.AddWithValue("@TipPostavke", (int)TipPostavke.POGODBA);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    if (!reader.IsDBNull(1))
+                        racuni[reader.GetInt32(0)] = reader.GetDecimal(1);
+                }
+            }
+
+            // 4. Sestavi rezultat
             foreach (var kv in partnerPogodbe.OrderBy(kv => nazivi.GetValueOrDefault(kv.Key) ?? "").ThenBy(kv => kv.Key))
             {
-                var korisceno = usedMinutes.GetValueOrDefault(kv.Key);
-                var razpol = razpolozljive.GetValueOrDefault(kv.Key);
+                var pogodbePartnerja = contracts.Where(c => c.Partner == kv.Key).ToList();
+                var znesek = pogodbePartnerja.Sum(c => pogodbePodatki.GetValueOrDefault((c.Stevilka, c.Leto)).Znesek);
+                var interval = string.Join(",", pogodbePartnerja.Select(c => pogodbePodatki.GetValueOrDefault((c.Stevilka, c.Leto)).Interval));
+                var znesekIzbranMesec = pogodbePartnerja.Sum(c => pogodbePodatki.GetValueOrDefault((c.Stevilka, c.Leto)).ZnesekIzbranMesec);
+                var racun = racuni.GetValueOrDefault(kv.Key);
                 partnerji.Add(new KoriscenjePogodbDto
                 {
                     Partner = kv.Key,
                     NazivPartnerja = nazivi.GetValueOrDefault(kv.Key),
                     SteviloPogodb = kv.Value.Count,
                     VsotaMinut = kv.Value.MonthlyMinutes,
-                    KoriscenoMinut = korisceno,
-                    SkupajRazpolozljivih = razpol
+                    Znesek = znesek,
+                    Interval = interval,
+                    ZnesekIzbranMesec = znesekIzbranMesec,
+                    Racun = racun
                 });
             }
+
+            intervalLookup = partnerji
+                .Select(p => p.Interval)
+                .Where(i => !string.IsNullOrWhiteSpace(i))
+                .Select(i => i!)
+                .Distinct()
+                .OrderBy(i => i)
+                .ToList();
         }
         catch
         {
@@ -164,5 +260,27 @@
         {
             isLoading = false;
         }
+    }
+
+    void OnIntervalFilterChanged(string interval, bool isChecked)
+    {
+        if (isChecked)
+            filterInterval.Add(interval);
+        else
+            filterInterval.Remove(interval);
+    }
+
+    void ClearIntervalFilter()
+    {
+        filterInterval.Clear();
+    }
+
+    string IntervalFilterCaption()
+    {
+        if (filterInterval.Count == 0)
+            return "(vsi)";
+        if (filterInterval.Count == 1)
+            return filterInterval.First();
+        return $"{filterInterval.Count} izbranih";
     }
 }

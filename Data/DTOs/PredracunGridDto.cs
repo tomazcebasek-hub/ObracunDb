@@ -13,9 +13,9 @@ public class PredracunGridDto
     public string? SifraKomercialista { get; set; }
     public string? NazivKomercialista { get; set; }
     public int? Stanje { get; set; }
-    public decimal? ZnesekKoncni { get; set; }
-    public decimal? Placano { get; set; }
-    public decimal? PlacanoIzRacunov { get; set; }
+    public decimal ZnesekKoncni { get; set; }
+    public decimal Placano { get; set; }
+    public decimal PlacanoIzRacunov { get; set; }
     
     /// <summary>
     /// Prikaz stanja: "Potrjen", "Plaèano", "Delno", "Porabljeno" ali prazen
@@ -29,9 +29,9 @@ public class PredracunGridDto
                 return "Porabljeno";
 
             // Preveri plaèila
-            if (Placano.HasValue && Placano.Value >= 1 && ZnesekKoncni.HasValue && ZnesekKoncni.Value > 0)
+            if (Placano >= 1 && ZnesekKoncni > 0)
             {
-                if (Placano.Value >= ZnesekKoncni.Value)
+                if (Placano >= ZnesekKoncni)
                     return "Plaèano";
                 else
                     return "Delno";
@@ -54,12 +54,12 @@ public class PredracunGridDto
     {
         get
         {
-            if (PlacanoIzRacunov.HasValue && PlacanoIzRacunov.Value >= 1 && ZnesekKoncni.HasValue && ZnesekKoncni.Value > 0)
+            if (PlacanoIzRacunov >= 1 && ZnesekKoncni > 0)
             {
-                if (PlacanoIzRacunov.Value >= ZnesekKoncni.Value)
+                if (PlacanoIzRacunov >= ZnesekKoncni)
                     return "Raèun";
                 else
-                    return $"Delno ({PlacanoIzRacunov.Value:N2})";
+                    return $"Delno ({PlacanoIzRacunov:N2})";
             }
 
             return "";
@@ -69,7 +69,7 @@ public class PredracunGridDto
     /// <summary>
     /// Znesek brez DDV (22%).
     /// </summary>
-    public decimal? ZnesekBrezDdv => ZnesekKoncni.HasValue ? Math.Round(ZnesekKoncni.Value / 1.22m, 2) : null;
+    public decimal ZnesekBrezDdv => Math.Round(ZnesekKoncni / 1.22m, 2);
 
     /// <summary>
     /// Minute iz predraèuna (iz postavk, ki imajo artikel v OBRACUN_PAKET_MINUTE).
@@ -101,3 +101,4 @@ public class PredracunGridDto
     /// </summary>
     public bool PovezanOriginal { get; set; }
 }
+

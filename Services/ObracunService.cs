@@ -1491,9 +1491,9 @@ public class ObracunService
                     Leto = reader.GetInt32(1),
                     Datum = reader.IsDBNull(2) ? null : reader.GetDateTime(2),
                     Stanje = reader.IsDBNull(3) ? null : reader.GetInt32(3),
-                    ZnesekKoncni = reader.IsDBNull(4) ? null : reader.GetDecimal(4),
+                    ZnesekKoncni = reader.IsDBNull(4) ? 0m : reader.GetDecimal(4),
                     SifraKupca = partner,
-                    Placano = reader.IsDBNull(5) ? null : reader.GetDecimal(5),
+                    Placano = reader.IsDBNull(5) ? 0m : reader.GetDecimal(5),
                     PlacanoIzRacunov = 0
                 });
             }
@@ -2601,18 +2601,23 @@ public class ObracunService
     /// Pridobi pregled ur po serviserjih za izbrani mesec/leto.
     /// Stolpci: serviser, st. nalogov, skupaj ure, ure NOM (SIF28=1), ure partner=23900 brez NOM.
     /// </summary>
-    public async Task<List<PregledUrGridDto>> GetPregledUrAsync(int leto, int mesec)
+    public Task<List<PregledUrGridDto>> GetPregledUrAsync(int leto, int mesec) =>
+        GetPregledUrAsync(leto, mesec, leto, mesec);
+
+    public async Task<List<PregledUrGridDto>> GetPregledUrAsync(int letoOd, int mesecOd, int letoDo, int mesecDo)
     {
-        var datumOd = new DateTime(leto, mesec, 1);
-        var datumDo = datumOd.AddMonths(1).AddDays(-1);
+        var datumOd = new DateTime(letoOd, mesecOd, 1);
+        var datumDo = new DateTime(letoDo, mesecDo, 1).AddMonths(1).AddDays(-1);
+        if (datumOd > datumDo)
+            (datumOd, datumDo) = (datumDo.Date.AddDays(1 - datumDo.Day), datumOd.AddMonths(1).AddDays(-1));
 
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();
 
         // 1. Preberi naloge (potnik, partner, NOM, zacetek/konec - za trajanje)
-        var nalogi = new List<(string Potnik, int Partner, int Nom, DateTime ZacetekUra, DateTime KonecUra, string Stevilka, int Leto)>();
+        var nalogi = new List<(string Potnik, int Partner, int Nom, DateTime Datum, DateTime ZacetekUra, DateTime KonecUra, string Stevilka, int Leto)>();
         await using (var cmd = new FbCommand(@"
-            SELECT POTNIK, PARTNER, SIF28, ZACETEK_URA, KONEC_URA, STEVILKA, LETO
+            SELECT POTNIK, PARTNER, SIF28, ZACETEK_DATUM, ZACETEK_URA, KONEC_URA, STEVILKA, LETO
             FROM FA_DN_NALOG
             WHERE ZACETEK_DATUM >= @DatumOd AND ZACETEK_DATUM <= @DatumDo", connection))
         {
@@ -2624,11 +2629,12 @@ public class ObracunService
                 var potnik = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
                 var partner = reader.GetInt32(1);
                 var nom = reader.IsDBNull(2) ? 0 : reader.GetInt32(2);
-                var zacetek = reader.IsDBNull(3) ? DateTime.MinValue : reader.GetDateTime(3);
-                var konec = reader.IsDBNull(4) ? DateTime.MinValue : reader.GetDateTime(4);
-                var stevilka = reader.IsDBNull(5) ? "" : reader.GetString(5).Trim();
-                var letoN = reader.GetInt32(6);
-                nalogi.Add((potnik, partner, nom, zacetek, konec, stevilka, letoN));
+                var datum = reader.IsDBNull(3) ? DateTime.MinValue : reader.GetDateTime(3);
+                var zacetek = reader.IsDBNull(4) ? DateTime.MinValue : reader.GetDateTime(4);
+                var konec = reader.IsDBNull(5) ? DateTime.MinValue : reader.GetDateTime(5);
+                var stevilka = reader.IsDBNull(6) ? "" : reader.GetString(6).Trim();
+                var letoN = reader.GetInt32(7);
+                nalogi.Add((potnik, partner, nom, datum, zacetek, konec, stevilka, letoN));
             }
         }
 
@@ -2753,11 +2759,17 @@ public class ObracunService
     /// Pridobi naloge serviserja za izbrani mesec/leto z razčlenitvijo ur,
     /// po želji filtrirano (NOM / partner 23900 / tarifni pas).
     /// </summary>
+    public Task<List<PregledUrNalogDto>> GetPregledUrNalogiAsync(
+        int leto, int mesec, string serviser, PregledUrFilter filter) =>
+        GetPregledUrNalogiAsync(leto, mesec, leto, mesec, serviser, filter);
+
     public async Task<List<PregledUrNalogDto>> GetPregledUrNalogiAsync(
-        int leto, int mesec, string serviser, PregledUrFilter filter)
+        int letoOd, int mesecOd, int letoDo, int mesecDo, string serviser, PregledUrFilter filter)
     {
-        var datumOd = new DateTime(leto, mesec, 1);
-        var datumDo = datumOd.AddMonths(1).AddDays(-1);
+        var datumOd = new DateTime(letoOd, mesecOd, 1);
+        var datumDo = new DateTime(letoDo, mesecDo, 1).AddMonths(1).AddDays(-1);
+        if (datumOd > datumDo)
+            (datumOd, datumDo) = (datumDo.Date.AddDays(1 - datumDo.Day), datumOd.AddMonths(1).AddDays(-1));
 
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();

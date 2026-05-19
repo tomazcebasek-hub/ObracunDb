@@ -15,9 +15,17 @@
 </style>
 
 <div class="d-flex align-items-center gap-2 mb-3">
-    <span>Mesec:</span>
+    <span>Od:</span>
     <select class="form-select form-select-sm" style="width:auto;"
-            value="@izbranoObdobje" @onchange="OnObdobjeChanged">
+            value="@izbranoObdobjeOd" @onchange="OnObdobjeOdChanged">
+        @foreach (var m in meseci)
+        {
+            <option value="@($"{m.Mesec:D2}/{m.Leto}")">@($"{m.Mesec:D2}/{m.Leto}")</option>
+        }
+    </select>
+    <span>Do:</span>
+    <select class="form-select form-select-sm" style="width:auto;"
+            value="@izbranoObdobjeDo" @onchange="OnObdobjeDoChanged">
         @foreach (var m in meseci)
         {
             <option value="@($"{m.Mesec:D2}/{m.Leto}")">@($"{m.Mesec:D2}/{m.Leto}")</option>
@@ -154,17 +162,22 @@ else if (podatki != null)
 }
 
 <PregledUrNalogiPopup @bind-Visible="popupVisible"
-                      Leto="@popupLeto"
-                      Mesec="@popupMesec"
+                      LetoOd="@popupLetoOd"
+                      MesecOd="@popupMesecOd"
+                      LetoDo="@popupLetoDo"
+                      MesecDo="@popupMesecDo"
                       Serviser="@popupServiser"
                       NazivServiserja="@popupNazivServiserja"
                       Filter="@popupFilter"
                       FilterOpis="@popupFilterOpis" />
 
 @code {
-    int mesec;
-    int leto;
-    string izbranoObdobje = "";
+    int mesecOd;
+    int letoOd;
+    int mesecDo;
+    int letoDo;
+    string izbranoObdobjeOd = "";
+    string izbranoObdobjeDo = "";
     List<(int Leto, int Mesec)> meseci = new();
     List<PregledUrGridDto>? podatki;
     bool isLoading;
@@ -172,8 +185,10 @@ else if (podatki != null)
 
     // Popup state
     bool popupVisible;
-    int popupLeto;
-    int popupMesec;
+    int popupLetoOd;
+    int popupMesecOd;
+    int popupLetoDo;
+    int popupMesecDo;
     string popupServiser = "";
     string? popupNazivServiserja;
     PregledUrFilter popupFilter = PregledUrFilter.Vsi;
@@ -181,8 +196,10 @@ else if (podatki != null)
 
     void OpenPopup(PregledUrGridDto d, PregledUrFilter filter, string filterOpis)
     {
-        popupLeto = leto;
-        popupMesec = mesec;
+        popupLetoOd = letoOd;
+        popupMesecOd = mesecOd;
+        popupLetoDo = letoDo;
+        popupMesecDo = mesecDo;
         popupServiser = d.Serviser;
         popupNazivServiserja = d.NazivServiserja;
         popupFilter = filter;
@@ -194,9 +211,9 @@ else if (podatki != null)
     {
         // Default = pretekli mesec
         var prejsnji = DateTime.Today.AddMonths(-1);
-        leto = prejsnji.Year;
-        mesec = prejsnji.Month;
-        izbranoObdobje = $"{mesec:D2}/{leto}";
+        letoOd = letoDo = prejsnji.Year;
+        mesecOd = mesecDo = prejsnji.Month;
+        izbranoObdobjeOd = izbranoObdobjeDo = $"{mesecOd:D2}/{letoOd}";
 
         // Sestavi seznam mesecev (zadnjih 24 mesecev)
         meseci = new();
@@ -208,16 +225,48 @@ else if (podatki != null)
         }
     }
 
-    void OnObdobjeChanged(ChangeEventArgs e)
+    void OnObdobjeOdChanged(ChangeEventArgs e)
     {
         var val = e.Value?.ToString() ?? "";
-        var parts = val.Split('/');
-        if (parts.Length == 2 && int.TryParse(parts[0], out var m) && int.TryParse(parts[1], out var l))
+        if (TryParseObdobje(val, out var l, out var m))
         {
-            mesec = m;
-            leto = l;
-            izbranoObdobje = val;
+            mesecOd = m;
+            letoOd = l;
+            izbranoObdobjeOd = val;
         }
+    }
+
+    void OnObdobjeDoChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        if (TryParseObdobje(val, out var l, out var m))
+        {
+            mesecDo = m;
+            letoDo = l;
+            izbranoObdobjeDo = val;
+        }
+    }
+
+    static bool TryParseObdobje(string val, out int leto, out int mesec)
+    {
+        leto = 0;
+        mesec = 0;
+        var parts = val.Split('/');
+        return parts.Length == 2
+            && int.TryParse(parts[0], out mesec)
+            && int.TryParse(parts[1], out leto);
+    }
+
+    void NormalizeRange()
+    {
+        var od = new DateTime(letoOd, mesecOd, 1);
+        var doDatum = new DateTime(letoDo, mesecDo, 1);
+        if (od <= doDatum) return;
+
+        (letoOd, letoDo) = (letoDo, letoOd);
+        (mesecOd, mesecDo) = (mesecDo, mesecOd);
+        izbranoObdobjeOd = $"{mesecOd:D2}/{letoOd}";
+        izbranoObdobjeDo = $"{mesecDo:D2}/{letoDo}";
     }
 
     async Task NaloziPodatke()
@@ -226,7 +275,8 @@ else if (podatki != null)
         errorMessage = null;
         try
         {
-            podatki = await ObracunService.GetPregledUrAsync(leto, mesec);
+            NormalizeRange();
+            podatki = await ObracunService.GetPregledUrAsync(letoOd, mesecOd, letoDo, mesecDo);
         }
         catch (Exception ex)
         {

@@ -105,8 +105,10 @@
 @code {
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
-    [Parameter] public int Leto { get; set; }
-    [Parameter] public int Mesec { get; set; }
+    [Parameter] public int LetoOd { get; set; }
+    [Parameter] public int MesecOd { get; set; }
+    [Parameter] public int LetoDo { get; set; }
+    [Parameter] public int MesecDo { get; set; }
     [Parameter] public string Serviser { get; set; } = "";
     [Parameter] public string? NazivServiserja { get; set; }
     [Parameter] public PregledUrFilter Filter { get; set; } = PregledUrFilter.Vsi;
@@ -130,7 +132,10 @@
             selectedNalog = null;
             var prikazServiser = string.IsNullOrEmpty(NazivServiserja) ? Serviser : $"{Serviser} — {NazivServiserja}";
             var filtrText = string.IsNullOrEmpty(FilterOpis) ? "" : $" / {FilterOpis}";
-            headerText = $"Nalogi — {prikazServiser} — {Mesec:D2}/{Leto}{filtrText}";
+            var obdobjeText = LetoOd == LetoDo && MesecOd == MesecDo
+                ? $"{MesecOd:D2}/{LetoOd}"
+                : $"{MesecOd:D2}/{LetoOd} - {MesecDo:D2}/{LetoDo}";
+            headerText = $"Nalogi — {prikazServiser} — {obdobjeText}{filtrText}";
             await NaloziPodatke();
         }
         else if (!Visible && visibleInternal)
@@ -152,7 +157,7 @@
         selectedNalog = null;
         try
         {
-            nalogi = await ObracunService.GetPregledUrNalogiAsync(Leto, Mesec, Serviser, Filter);
+            nalogi = await ObracunService.GetPregledUrNalogiAsync(LetoOd, MesecOd, LetoDo, MesecDo, Serviser, Filter);
             naziviPartnerjev = nalogi?
                 .Select(n => n.NazivPartnerja)
                 .Where(s => !string.IsNullOrWhiteSpace(s))

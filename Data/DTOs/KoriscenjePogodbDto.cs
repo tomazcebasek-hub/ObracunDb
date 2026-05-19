@@ -6,9 +6,8 @@ public class KoriscenjePogodbDto
     public string? NazivPartnerja { get; set; }
     public int SteviloPogodb { get; set; }
     public int VsotaMinut { get; set; }
-    public int KoriscenoMinut { get; set; }
-    public int SkupajRazpolozljivih { get; set; }
-    public decimal ProcentKoriscenja => SkupajRazpolozljivih > 0
-        ? Math.Round((decimal)KoriscenoMinut / SkupajRazpolozljivih * 100, 1)
-        : 0;
+    public decimal Znesek { get; set; }
+    public string? Interval { get; set; }
+    public decimal ZnesekIzbranMesec { get; set; }
+    public decimal Racun { get; set; }
 }
