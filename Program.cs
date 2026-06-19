@@ -38,6 +38,7 @@ builder.Services.AddScoped<ObracunIzvedbaService>();
 builder.Services.AddScoped<FawService>();
 builder.Services.AddScoped<LoceniRacuniService>();
 builder.Services.AddScoped<ObracunOsnutekSpremembaService>();
+builder.Services.AddScoped<ReklamacijeService>();
 
 // Parametri (singleton — naložijo se enkrat ob zagonu)
 var parametriService = new ParametriService(connectionManager);

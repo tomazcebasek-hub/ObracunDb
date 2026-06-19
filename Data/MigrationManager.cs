@@ -31,7 +31,9 @@ public static class MigrationManager
         { 112, ApplyV112 },
         { 113, ApplyV113 },
         { 114, ApplyV114 },
-        { 115, ApplyV115 }
+        { 115, ApplyV115 },
+        { 116, ApplyV116 },
+        { 117, ApplyV117 }
     };
 
     /// <summary>
@@ -151,6 +153,8 @@ public static class MigrationManager
         113 => "OBRACUN_OSNUTEK_POS: dodana stolpca POGODBA_STEVILKA in POGODBA_LETO",
         114 => "OBRACUN_OSNUTEK_RACUN: nova tabela za ločene račune po pogodbah",
         115 => "OBRACUN_OSNUTEK_SPREMEMBA: nova tabela za ročne korekture količin",
+        116 => "OBRACUN_REKLAMACIJA: novi tabeli za reklamacije",
+        117 => "OBRACUN_PRILOGA: priponke reklamacij",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -526,6 +530,78 @@ public static class MigrationManager
                 IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
                     NEW.ID = GEN_ID(GEN_OBRACUN_OSNUTEK_SPREMEMBA_ID, 1);
             END", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 116: Novi tabeli OBRACUN_REKLAMACIJA in OBRACUN_REKLAMACIJA_POS.
+    /// </summary>
+    private static string? ApplyV116(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_REKLAMACIJA (
+            ID                INTEGER NOT NULL PRIMARY KEY,
+            TIP_REKLAMACIJE   INTEGER NOT NULL,
+            PARTNER           INTEGER NOT NULL,
+            DATUM_ZAHTEVE     DATE NOT NULL,
+            STEVILKE_POGODB   VARCHAR(500),
+            KONTAKT           VARCHAR(255),
+            TIP_PREKINITVE    VARCHAR(255),
+            RACUNI_DO_DNE     DATE
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBRACUN_REKLAMACIJA_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBRACUN_REKLAMACIJA FOR OBRACUN_REKLAMACIJA
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBRACUN_REKLAMACIJA_ID, 1);
+            END", status);
+
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_REKLAMACIJA_POS (
+            ID                INTEGER NOT NULL PRIMARY KEY,
+            ID_REKLAMACIJA    INTEGER NOT NULL,
+            DATUM             TIMESTAMP NOT NULL,
+            UPORABNIK         VARCHAR(100) NOT NULL,
+            OPIS              BLOB SUB_TYPE TEXT,
+            KDO_NAJ_OBDELA    VARCHAR(100)
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBRACUN_REKLAMACIJA_POS_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBRACUN_REKLAMACIJA_POS FOR OBRACUN_REKLAMACIJA_POS
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBRACUN_REKLAMACIJA_POS_ID, 1);
+            END", status);
+        ExecuteSql(conn, @"ALTER TABLE OBRACUN_REKLAMACIJA_POS
+            ADD CONSTRAINT FK_OBR_REKL_POS_GLAVA
+            FOREIGN KEY (ID_REKLAMACIJA) REFERENCES OBRACUN_REKLAMACIJA (ID)", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 117: Priponke reklamacij.
+    /// </summary>
+    private static string? ApplyV117(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_PRILOGA (
+            ID                INTEGER NOT NULL PRIMARY KEY,
+            ID_REKLAMACIJA    INTEGER NOT NULL,
+            IME_DATOTEKE      VARCHAR(255) NOT NULL,
+            TIP_VSEBINE       VARCHAR(100) NOT NULL,
+            VSEBINA           BLOB SUB_TYPE BINARY NOT NULL,
+            VELIKOST          INTEGER NOT NULL,
+            DATUM             TIMESTAMP NOT NULL,
+            UPORABNIK         VARCHAR(100) NOT NULL
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBRACUN_PRILOGA_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBRACUN_PRILOGA FOR OBRACUN_PRILOGA
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBRACUN_PRILOGA_ID, 1);
+            END", status);
+        ExecuteSql(conn, @"ALTER TABLE OBRACUN_PRILOGA
+            ADD CONSTRAINT FK_OBR_PRILOGA_REKLAMACIJA
+            FOREIGN KEY (ID_REKLAMACIJA) REFERENCES OBRACUN_REKLAMACIJA (ID)", status);
         return null;
     }
 }

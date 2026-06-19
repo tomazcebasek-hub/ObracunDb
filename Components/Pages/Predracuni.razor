@@ -47,8 +47,15 @@
             ShowFooter="true"
             CssClass="w-100 h-100">
         <Columns>
+            <DxGridCommandColumn Caption="" Width="80px" NewButtonVisible="false" EditButtonVisible="false" DeleteButtonVisible="false">
+                <CellDisplayTemplate>
+                    @{
+                        var predracun = (PredracunGridDto)context.DataItem;
+                    }
+                    <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" SizeMode="SizeMode.Small" Click="@(() => ShowPredracunInfoAsync(predracun))" />
+                </CellDisplayTemplate>
+            </DxGridCommandColumn>
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Stevilka)" Caption="Številka" Width="100px" />
-            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Leto)" Caption="Leto" Width="80px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="120px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.SifraKupca)" Caption="Šifra" Width="100px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.NazivPartnerja)" Caption="Naziv partnerja" />
@@ -228,11 +235,114 @@
     }
     </div>
 
+<DxPopup @bind-Visible="@showPredracunInfo"
+         HeaderText="@predracunInfoTitle"
+         Width="900px"
+         CloseOnOutsideClick="true"
+         ShowFooter="true">
+    <BodyContentTemplate>
+        @if (predracunInfoLoading)
+        {
+            <p>Nalagam podatke...</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(predracunInfoError))
+        {
+            <div class="alert alert-danger">@predracunInfoError</div>
+        }
+        else if (predracunInfo != null)
+        {
+            <div style="display:flex; flex-direction:column; gap:12px; font-size:0.9rem;">
+                <table class="table table-sm table-striped">
+                    <tbody>
+                        <tr><td><strong>Predračun</strong></td><td>@predracunInfo.Stevilka / @predracunInfo.Leto</td></tr>
+                        <tr><td><strong>Znesek</strong></td><td>@predracunInfo.ZnesekKoncni.ToString("N2")</td></tr>
+                        <tr><td><strong>STANJE iz FA_PREDRACUN</strong></td><td>@(predracunInfo.Stanje?.ToString() ?? "")</td></tr>
+                        <tr><td><strong>Stanje</strong></td><td>@predracunInfo.StanjePrikaz</td></tr>
+                        <tr><td><strong>Račun</strong></td><td>@predracunInfo.RacunStatus</td></tr>
+                        <tr><td><strong>Št. računa</strong></td><td>@predracunInfo.PovezaniRacuni</td></tr>
+                    </tbody>
+                </table>
+
+                <div>
+                    @if (predracunInfo.Placila.Count == 0)
+                    {
+                        <p class="text-muted">Ni najdenih plačil.</p>
+                    }
+                    else
+                    {
+                        <DxGrid Data="@predracunInfo.Placila" ShowAllRows="true" CssClass="w-100">
+                            <Columns>
+                                <DxGridBandColumn Caption="Plačilo">
+                                    <HeaderCaptionTemplate Context="hdr">
+                                        <div style="width:100%; text-align:left;">Plačila</div>
+                                    </HeaderCaptionTemplate>
+                                    <Columns>
+                                        <DxGridDataColumn FieldName="@nameof(PredracunPlaciloInfoDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                                        <DxGridDataColumn FieldName="@nameof(PredracunPlaciloInfoDto.Znesek)" Caption="Znesek" DisplayFormat="N2" Width="120px" />
+                                        @if (predracunInfo.Placila.Any(p => p.Sconto != 0))
+                                        {
+                                            <DxGridDataColumn FieldName="@nameof(PredracunPlaciloInfoDto.Sconto)" Caption="Sconto" DisplayFormat="N2" Width="120px" />
+                                        }
+                                        @if (predracunInfo.Placila.Any(p => p.Skupaj != p.Znesek))
+                                        {
+                                            <DxGridDataColumn FieldName="@nameof(PredracunPlaciloInfoDto.Skupaj)" Caption="Skupaj" DisplayFormat="N2" Width="120px" />
+                                        }
+                                    </Columns>
+                                </DxGridBandColumn>
+                            </Columns>
+                        </DxGrid>
+                    }
+                </div>
+
+                <div>
+                    @if (predracunInfo.Racuni.Count == 0)
+                    {
+                        <p class="text-muted">Ni najdenih povezanih računov.</p>
+                    }
+                    else
+                    {
+                        <DxGrid Data="@predracunInfo.Racuni" ShowAllRows="true" CssClass="w-100">
+                            <Columns>
+                                <DxGridBandColumn Caption="Povezani računi">
+                                    <HeaderCaptionTemplate Context="hdr">
+                                        <div style="width:100%; text-align:left;">Povezani računi</div>
+                                    </HeaderCaptionTemplate>
+                                    <Columns>
+                                        <DxGridDataColumn FieldName="@nameof(PredracunRacunInfoDto.Stevilka)" Caption="Račun" Width="120px">
+                                            <CellDisplayTemplate Context="c">
+                                                @{
+                                                    var racun = (PredracunRacunInfoDto)c.DataItem;
+                                                }
+                                                <div style="width:100%; text-align:left;">@racun.Stevilka / @racun.Leto</div>
+                                            </CellDisplayTemplate>
+                                        </DxGridDataColumn>
+                                        <DxGridDataColumn FieldName="@nameof(PredracunRacunInfoDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                                        <DxGridDataColumn FieldName="@nameof(PredracunRacunInfoDto.VirPovezave)" Caption="Vir povezave" Width="130px" />
+                                        <DxGridDataColumn FieldName="@nameof(PredracunRacunInfoDto.PovezaniZnesek)" Caption="Znesek povezave" DisplayFormat="N2" Width="150px" />
+                                    </Columns>
+                                </DxGridBandColumn>
+                            </Columns>
+                        </DxGrid>
+                    }
+                </div>
+            </div>
+        }
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showPredracunInfo = false)" />
+    </FooterContentTemplate>
+</DxPopup>
+
 @code {
     IGrid? grid;
     List<PredracunGridDto>? predracuni;
     List<PredracunGridDto>? filteredPredracuni;
     bool isLoading = false;
+    bool showPredracunInfo;
+    bool predracunInfoLoading;
+    string predracunInfoTitle = "Info predračuna";
+    string? predracunInfoError;
+    PredracunInfoDto? predracunInfo;
 
     List<string> komercialistiLookup = new();
 
@@ -288,6 +398,28 @@
         finally
         {
             isLoading = false;
+        }
+    }
+
+    async Task ShowPredracunInfoAsync(PredracunGridDto predracun)
+    {
+        showPredracunInfo = true;
+        predracunInfoLoading = true;
+        predracunInfoError = null;
+        predracunInfo = null;
+        predracunInfoTitle = $"Info predračuna {predracun.Stevilka} / {predracun.Leto}";
+
+        try
+        {
+            predracunInfo = await PredracunService.GetPredracunInfoAsync(predracun.Stevilka, predracun.Leto);
+        }
+        catch (Exception ex)
+        {
+            predracunInfoError = ex.Message;
+        }
+        finally
+        {
+            predracunInfoLoading = false;
         }
     }
 

@@ -1,0 +1,346 @@
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Services
+@inject ReklamacijeService ReklamacijeService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="rekl-priloge-panel" @ref="pasteArea" tabindex="0" style="height:@Height; min-height:0;">
+    <div style="display:flex; gap:12px; min-height:0; height:100%;">
+        <div style="width:280px; overflow:auto; border-right:1px solid #ddd; padding-right:8px;">
+            @if (AllowAdd)
+            {
+                <div class="mb-2">
+                    <InputFile OnChange="@OnFilesSelected" multiple accept=".pdf,image/*" class="form-control form-control-sm" />
+                </div>
+                <div class="mb-2">
+                    <DxButton Text="Prilepi iz odložišča"
+                              Click="@PasteFromClipboard"
+                              RenderStyle="ButtonRenderStyle.Secondary" />
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="text-danger mb-2" style="font-size:0.85rem;">@errorMessage</div>
+            }
+
+            @if (loading)
+            {
+                <p class="text-muted">Nalagam...</p>
+            }
+            else if (!SavedPriloge.Any() && !PendingPriloge.Any())
+            {
+                <p class="text-muted">Ni priponk.</p>
+            }
+            else
+            {
+                @foreach (var priloga in SavedPriloge)
+                {
+                    <div class="mb-2 p-2" style="@GetSavedPrilogaStyle(priloga.Id)" @onclick="@(() => SelectSavedPriloga(priloga.Id))">
+                        <div style="font-weight:600; word-break:break-word;">@priloga.ImeDatoteke</div>
+                        <div class="text-muted" style="font-size:0.8rem;">@priloga.VelikostText</div>
+                        <div class="text-muted" style="font-size:0.8rem;">@priloga.Datum.ToString("dd.MM.yyyy HH:mm")</div>
+                    </div>
+                }
+                @for (var i = 0; i < PendingPriloge.Count; i++)
+                {
+                    var idx = i;
+                    var priloga = PendingPriloge[idx];
+                    <div class="mb-2 p-2" style="@GetPendingPrilogaStyle(idx)" @onclick="@(() => SelectPendingPriloga(idx))">
+                        <div style="font-weight:600; word-break:break-word;">@priloga.ImeDatoteke</div>
+                        <div class="text-muted" style="font-size:0.8rem;">Novo, še ni shranjeno</div>
+                        <div class="text-muted" style="font-size:0.8rem;">@FormatVelikost(priloga.Velikost)</div>
+                    </div>
+                }
+            }
+        </div>
+        <div style="flex:1; min-width:0; height:100%; overflow:hidden;">
+            @if (selectedPriloga != null)
+            {
+                @if (selectedPriloga.JePdf)
+                {
+                    <iframe src="@selectedPriloga.DataUrl" style="width:100%; height:100%; border:1px solid #ddd;"></iframe>
+                }
+                else if (selectedPriloga.JeSlika)
+                {
+                    <div style="width:100%; height:100%; overflow:auto; border:1px solid #ddd; display:flex; align-items:flex-start; justify-content:center;">
+                        <img src="@selectedPriloga.DataUrl" style="max-width:100%; height:auto;" />
+                    </div>
+                }
+                else
+                {
+                    <div class="text-muted p-3" style="border:1px solid #ddd; height:100%;">Predogled za ta tip datoteke ni podprt.</div>
+                }
+            }
+            else
+            {
+                <div class="text-muted p-3" style="border:1px solid #ddd; height:100%;">Izberi priponko za predogled.</div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    const long MaxAttachmentSize = 10 * 1024 * 1024;
+
+    [Parameter] public int? IdReklamacija { get; set; }
+    [Parameter] public List<ReklamacijaPrilogaVnosDto> PendingPriloge { get; set; } = new();
+    [Parameter] public bool AllowAdd { get; set; } = true;
+    [Parameter] public string Height { get; set; } = "520px";
+
+    ElementReference pasteArea;
+    DotNetObjectReference<ReklamacijePrilogePanel>? dotNetReference;
+    IJSObjectReference? pasteRegistration;
+    List<ReklamacijaPrilogaDto> SavedPriloge { get; set; } = new();
+    ReklamacijaPrilogaVsebinaDto? selectedPriloga;
+    int? selectedSavedPrilogaId;
+    int? selectedPendingPrilogaIndex;
+    bool loading;
+    string? errorMessage;
+    int? loadedIdReklamacija;
+
+    protected override void OnInitialized()
+    {
+        dotNetReference = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IdReklamacija != loadedIdReklamacija)
+        {
+            loadedIdReklamacija = IdReklamacija;
+            await LoadSavedPriloge();
+            selectedPriloga = null;
+            selectedSavedPrilogaId = null;
+            selectedPendingPrilogaIndex = null;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AllowAdd)
+        {
+            try
+            {
+                pasteRegistration = await JS.InvokeAsync<IJSObjectReference>("reklamacijePriloge.registerPaste", pasteArea, dotNetReference);
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Priprava lepljenja ni uspela: {ex.Message}";
+            }
+        }
+    }
+
+    async Task LoadSavedPriloge()
+    {
+        SavedPriloge.Clear();
+        if (!IdReklamacija.HasValue)
+            return;
+
+        loading = true;
+        try
+        {
+            SavedPriloge = await ReklamacijeService.GetPrilogeAsync(IdReklamacija.Value);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        errorMessage = null;
+        foreach (var file in e.GetMultipleFiles(20))
+        {
+            if (file.Size > MaxAttachmentSize)
+            {
+                errorMessage = $"Datoteka {file.Name} je večja od 10 MB.";
+                continue;
+            }
+
+            await using var stream = file.OpenReadStream(MaxAttachmentSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+            await AddPriloga(new ReklamacijaPrilogaVnosDto
+            {
+                ImeDatoteke = file.Name,
+                TipVsebine = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+                Vsebina = memory.ToArray()
+            });
+        }
+    }
+
+    async Task PasteFromClipboard()
+    {
+        errorMessage = null;
+        if (dotNetReference == null)
+        {
+            errorMessage = "Odložišče še ni pripravljeno. Poskusi znova.";
+            return;
+        }
+
+        try
+        {
+            var message = await JS.InvokeAsync<string?>("reklamacijePriloge.readImageFromClipboard", dotNetReference);
+            if (!string.IsNullOrWhiteSpace(message))
+                errorMessage = message;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Branje odložišča ni uspelo: {ex.Message}";
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPasteImagePreparedAsync(string id, string fileName, string contentType, long size)
+    {
+        errorMessage = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            if (size > MaxAttachmentSize)
+            {
+                errorMessage = "Prilepljena slika je večja od 10 MB.";
+                return;
+            }
+
+            var streamReference = await JS.InvokeAsync<IJSStreamReference>("reklamacijePriloge.getPreparedImage", id);
+            await using var stream = await streamReference.OpenReadStreamAsync(MaxAttachmentSize);
+            using var memory = new MemoryStream();
+            await stream.CopyToAsync(memory);
+
+            await AddPriloga(new ReklamacijaPrilogaVnosDto
+            {
+                ImeDatoteke = fileName,
+                TipVsebine = string.IsNullOrWhiteSpace(contentType) ? "image/png" : contentType,
+                Vsebina = memory.ToArray()
+            });
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri lepljenju slike: {ex.Message}";
+        }
+        finally
+        {
+            await JS.InvokeVoidAsync("reklamacijePriloge.releasePreparedImage", id);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPasteImageAsync(string fileName, string contentType, string base64)
+    {
+        errorMessage = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var bytes = Convert.FromBase64String(base64);
+            if (bytes.Length > MaxAttachmentSize)
+            {
+                errorMessage = "Prilepljena slika je večja od 10 MB.";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            await AddPriloga(new ReklamacijaPrilogaVnosDto
+            {
+                ImeDatoteke = fileName,
+                TipVsebine = contentType,
+                Vsebina = bytes
+            });
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka pri lepljenju slike: {ex.Message}";
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetPasteErrorAsync(string message)
+    {
+        errorMessage = message;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    async Task AddPriloga(ReklamacijaPrilogaVnosDto priloga)
+    {
+        if (IdReklamacija.HasValue)
+        {
+            var newId = await ReklamacijeService.AddPrilogaAsync(IdReklamacija.Value, priloga);
+            await LoadSavedPriloge();
+            await SelectSavedPriloga(newId);
+        }
+        else
+        {
+            PendingPriloge.Add(priloga);
+            SelectPendingPriloga(PendingPriloge.Count - 1);
+        }
+    }
+
+    async Task SelectSavedPriloga(int id)
+    {
+        errorMessage = null;
+        try
+        {
+            selectedPriloga = await ReklamacijeService.GetPrilogaVsebinaAsync(id);
+            selectedSavedPrilogaId = id;
+            selectedPendingPrilogaIndex = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    void SelectPendingPriloga(int index)
+    {
+        var priloga = PendingPriloge[index];
+        selectedSavedPrilogaId = null;
+        selectedPendingPrilogaIndex = index;
+        selectedPriloga = new ReklamacijaPrilogaVsebinaDto
+        {
+            Id = 0,
+            IdReklamacija = 0,
+            ImeDatoteke = priloga.ImeDatoteke,
+            TipVsebine = priloga.TipVsebine,
+            Velikost = priloga.Velikost,
+            Datum = DateTime.Now,
+            Uporabnik = "",
+            Vsebina = priloga.Vsebina
+        };
+    }
+
+    static string FormatVelikost(int velikost) => velikost >= 1024 * 1024
+        ? $"{velikost / 1024m / 1024m:N1} MB"
+        : $"{velikost / 1024m:N0} KB";
+
+    string GetSavedPrilogaStyle(int id) => selectedSavedPrilogaId == id
+        ? "border:2px solid #4fc3f7; background-color:rgba(79,195,247,0.16); border-radius:4px; cursor:pointer;"
+        : "border:1px solid #ddd; border-radius:4px; cursor:pointer;";
+
+    string GetPendingPrilogaStyle(int index) => selectedPendingPrilogaIndex == index
+        ? "border:2px solid #4fc3f7; background-color:rgba(79,195,247,0.16); border-radius:4px; cursor:pointer;"
+        : "border:1px solid #81c784; border-radius:4px; cursor:pointer;";
+
+    public async ValueTask DisposeAsync()
+    {
+        if (pasteRegistration != null)
+            await pasteRegistration.InvokeVoidAsync("dispose");
+        dotNetReference?.Dispose();
+    }
+}

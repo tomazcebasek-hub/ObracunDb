@@ -32,7 +32,7 @@ public class PartnerService
     /// partner=0 ? vsi partnerji, sicer samo ta partner.
     /// razcleniPoRacunih=true ? vrstica per raèun, false ? seštevek per partner.
     /// </summary>
-    public async Task<List<PartnerRacunDto>> IzracunajRacuneAsync(int partner, int leto, bool razcleniPoRacunih)
+    public async Task<List<PartnerRacunDto>> IzracunajRacuneAsync(int partner, ObdobjeRange obdobje, bool razcleniPoRacunih)
     {
         var result = new List<PartnerRacunDto>();
 
@@ -44,7 +44,8 @@ public class PartnerService
 
         void addParams(FbCommand c)
         {
-            c.Parameters.AddWithValue("@Leto", leto);
+            c.Parameters.AddWithValue("@Od", obdobje.Od);
+            c.Parameters.AddWithValue("@DoEks", obdobje.Do.AddDays(1));
             if (partner > 0)
                 c.Parameters.AddWithValue("@Partner", partner);
         }
@@ -123,7 +124,7 @@ public class PartnerService
             LEFT JOIN FA_ARTIKEL A ON A.SIFRA = K.SIFRA
             LEFT JOIN ({InterniNabavnaSubquery}
             ) IK_AGG ON IK_AGG.POVEZAVA_STEVILKA = D.STEVILKA AND IK_AGG.POVEZAVA_LETO = D.LETO AND IK_AGG.ZS_SESTAVA = K.ZS
-            WHERE R.LETO = @Leto
+            WHERE R.DATUM >= @Od AND R.DATUM < @DoEks
               AND COALESCE(R.TIP_RACUNA, 0) IN (0, 1, 6)
               AND COALESCE(R.TIP_RACUNA, 0) <> 4
               {partnerFilter}
@@ -143,7 +144,7 @@ public class PartnerService
                 CAST(0 AS NUMERIC(15,2))
             FROM FA_RACUN R
             LEFT JOIN FA_RACUN_KNJIZBA K ON R.STEVILKA = K.STEVILKA AND R.LETO = K.LETO
-            WHERE R.LETO = @Leto
+            WHERE R.DATUM >= @Od AND R.DATUM < @DoEks
               AND COALESCE(R.TIP_RACUNA, 0) IN (2, 5)
               AND COALESCE(R.TIP_RACUNA, 0) <> 4
               {partnerFilter}
@@ -165,7 +166,7 @@ public class PartnerService
             INNER JOIN FA_DN_NALOG D ON R.STEVILKA = D.RACUN_STEVILKA AND R.LETO = D.RACUN_LETO
             LEFT JOIN FA_DN_NALOG_KNJ K ON D.LETO = K.LETO AND D.STEVILKA = K.STEVILKA AND K.FAKTURIRA <> 0
             LEFT JOIN FA_ARTIKEL A ON A.SIFRA = K.SIFRA
-            WHERE R.LETO = @Leto
+            WHERE R.DATUM >= @Od AND R.DATUM < @DoEks
               AND COALESCE(R.TIP_RACUNA, 0) IN (7, 8, 12)
               AND COALESCE(R.TIP_RACUNA, 0) <> 4
               {partnerFilter}
@@ -183,7 +184,7 @@ public class PartnerService
             await using var cmd = new FbCommand($@"
                 SELECT SIFRA_KUPCA, STEVILKA, LETO, DATUM, COALESCE(ZNESEK_KONCNI / 1.22, 0), COALESCE(TIP_RACUNA, 0)
                 FROM FA_RACUN
-                WHERE LETO = @Leto
+                WHERE DATUM >= @Od AND DATUM < @DoEks
                   AND COALESCE(TIP_RACUNA, 0) <> 4
                   {partnerFilter.Replace("R.", "")}
                 ORDER BY DATUM DESC, STEVILKA DESC", connection);
@@ -218,24 +219,28 @@ public class PartnerService
     /// <summary>
     /// Pridobi vse partnerje ki se pojavijo na raèunih, obogatene s podatki iz drugih tabel
     /// </summary>
-    public async Task<List<PartnerGridDto>> GetAllAsync(int leto)
+    public async Task<List<PartnerGridDto>> GetAllAsync(ObdobjeRange obdobje)
     {
         var partnerji = new Dictionary<int, PartnerGridDto>();
 
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();
 
+        var od = obdobje.Od;
+        var doEks = obdobje.Do.AddDays(1);
+
         // 1. Partnerji iz FA_RACUN — distinct šifra + skupni znesek
         await using (var cmd = new FbCommand(@"
             SELECT r.SIFRA_KUPCA, p.NAZIV, COALESCE(SUM(r.ZNESEK_KONCNI / 1.22), 0)
             FROM FA_RACUN r
             LEFT JOIN PARTNER p ON r.SIFRA_KUPCA = p.SIFRA
-            WHERE r.LETO = @Leto
+            WHERE r.DATUM >= @Od AND r.DATUM < @DoEks
               AND COALESCE(r.TIP_RACUNA, 0) <> 4
             GROUP BY r.SIFRA_KUPCA, p.NAZIV
             ORDER BY p.NAZIV", connection))
         {
-            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Od", od);
+            cmd.Parameters.AddWithValue("@DoEks", doEks);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -254,10 +259,11 @@ public class PartnerService
         await using (var cmd = new FbCommand(@"
             SELECT PARTNER, COUNT(*)
             FROM FA_DN_NALOG
-            WHERE LETO = @Leto
+            WHERE ZACETEK_DATUM >= @Od AND ZACETEK_DATUM < @DoEks
             GROUP BY PARTNER", connection))
         {
-            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Od", od);
+            cmd.Parameters.AddWithValue("@DoEks", doEks);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -273,7 +279,7 @@ public class PartnerService
         }
 
         // 3. Blago/Storitve/BlagoNab — iz centralne metode (seštevek po partnerju)
-        var racuni = await IzracunajRacuneAsync(0, leto, false);
+        var racuni = await IzracunajRacuneAsync(0, obdobje, false);
         foreach (var r in racuni)
         {
             if (partnerji.TryGetValue(r.SifraKupca, out var partner))
@@ -294,12 +300,13 @@ public class PartnerService
             SELECT N.PARTNER, N.FAKTURIRANA, SUM(COALESCE(K.KOLICINA, 0))
             FROM FA_DN_NALOG N
             JOIN FA_DN_NALOG_KNJ K ON N.STEVILKA = K.STEVILKA AND N.LETO = K.LETO
-            WHERE N.LETO = @Leto
+            WHERE N.ZACETEK_DATUM >= @Od AND N.ZACETEK_DATUM < @DoEks
               AND CAST(N.STEVILKA AS INTEGER) BETWEEN 1000000 AND 1999999
               AND K.SIFRA = '047512'
             GROUP BY N.PARTNER, N.FAKTURIRANA", connection))
         {
-            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Od", od);
+            cmd.Parameters.AddWithValue("@DoEks", doEks);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
@@ -322,14 +329,15 @@ public class PartnerService
         await using (var cmd = new FbCommand(@"
             SELECT N.PARTNER, N.FAKTURIRANA, N.ZACETEK_URA, N.KONEC_URA, N.LETO, N.STEVILKA
             FROM FA_DN_NALOG N
-            WHERE N.LETO = @Leto
+            WHERE N.ZACETEK_DATUM >= @Od AND N.ZACETEK_DATUM < @DoEks
               AND (CAST(N.STEVILKA AS INTEGER) < 1000000 OR CAST(N.STEVILKA AS INTEGER) > 1999999)", connection))
         {
-            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Od", od);
+            cmd.Parameters.AddWithValue("@DoEks", doEks);
 
-            // Preload OBRACUN_DN minute za leto 2025
+            // Preload OBRACUN_DN minute za leto 2025 (samo ce obdobje prekriva leto 2025)
             var obracunDnMinute = new Dictionary<string, int>();
-            if (leto == 2025)
+            if (obdobje.Od.Year <= 2025 && obdobje.Do.Year >= 2025)
             {
                 await using var cmdDn = new FbCommand(
                     "SELECT STEVILKA, MINUTE_NALOGA FROM OBRACUN_DN WHERE LETO = 2025 AND MINUTE_NALOGA IS NOT NULL", connection);
@@ -379,7 +387,7 @@ public class PartnerService
         }
 
         // 5. Pogodbe — število in minute
-        var pogodbeAgg = await GetPogodbeAggAsync(leto);
+        var pogodbeAgg = await GetPogodbeAggAsync(obdobje);
         foreach (var (sifra, vals) in pogodbeAgg)
         {
             if (partnerji.TryGetValue(sifra, out var partner))
@@ -395,9 +403,9 @@ public class PartnerService
     /// <summary>
     /// Pridobi raèune za partnerja — uporablja centralno metodo
     /// </summary>
-    public async Task<List<PartnerRacunDto>> GetRacuniAsync(int sifraPartnerja, int leto)
+    public async Task<List<PartnerRacunDto>> GetRacuniAsync(int sifraPartnerja, ObdobjeRange obdobje)
     {
-        var result = await IzracunajRacuneAsync(sifraPartnerja, leto, true);
+        var result = await IzracunajRacuneAsync(sifraPartnerja, obdobje, true);
         return result.OrderByDescending(r => r.Datum).ThenByDescending(r => r.Stevilka).ToList();
     }
 
@@ -583,7 +591,7 @@ public class PartnerService
     /// <summary>
     /// Pridobi naloge za partnerja
     /// </summary>
-    public async Task<List<PartnerNalogDto>> GetNalogiAsync(int sifraPartnerja, int leto)
+    public async Task<List<PartnerNalogDto>> GetNalogiAsync(int sifraPartnerja, ObdobjeRange obdobje)
     {
         var result = new List<PartnerNalogDto>();
 
@@ -595,20 +603,21 @@ public class PartnerService
                    N.NAZIV1, N.NAZIV2, N.NAZIV3, N.NAZIV4, N.NAZIV5,
                    N.NAZIV6, N.NAZIV7, N.NAZIV8, N.NAZIV9,
                    N.POTNIK, K.PRIIMEK, K.IME,
-                   N.ZACETEK_URA, N.KONEC_URA
+                   N.ZACETEK_URA, N.KONEC_URA, N.LETO
             FROM FA_DN_NALOG N
             LEFT JOIN FA_KOMERCIALIST K ON N.POTNIK = K.SIFRA
-            WHERE N.PARTNER = @Partner AND N.LETO = @Leto
+            WHERE N.PARTNER = @Partner AND N.ZACETEK_DATUM >= @Od AND N.ZACETEK_DATUM < @DoEks
             ORDER BY N.ZACETEK_DATUM DESC, N.STEVILKA DESC", connection);
 
         cmd.Parameters.AddWithValue("@Partner", sifraPartnerja);
-        cmd.Parameters.AddWithValue("@Leto", leto);
+        cmd.Parameters.AddWithValue("@Od", obdobje.Od);
+        cmd.Parameters.AddWithValue("@DoEks", obdobje.Do.AddDays(1));
 
-        var helpdeskNalogi = new List<PartnerNalogDto>();
+        var helpdeskNalogi = new List<(PartnerNalogDto Dto, int Leto)>();
 
-        // Preload OBRACUN_DN minute za leto 2025
+        // Preload OBRACUN_DN minute za leto 2025 (samo ce obdobje prekriva leto 2025)
         var obracunDnMinute = new Dictionary<string, int>();
-        if (leto == 2025)
+        if (obdobje.Od.Year <= 2025 && obdobje.Do.Year >= 2025)
         {
             await using var cmdDn = new FbCommand(
                 "SELECT STEVILKA, MINUTE_NALOGA FROM OBRACUN_DN WHERE LETO = 2025 AND MINUTE_NALOGA IS NOT NULL", connection);
@@ -640,13 +649,14 @@ public class PartnerService
             var serviser = string.IsNullOrEmpty(ime) ? priimek : $"{priimek} {ime}".Trim();
 
             var stevilka = reader.IsDBNull(0) ? "" : reader.GetString(0).Trim();
+            var nalogLeto = reader.GetInt32(17);
             var trajanje = 0m;
 
             if (int.TryParse(stevilka, out var stNum) && stNum >= 1000000 && stNum <= 1999999)
             {
                 // helpdesk — trajanje se doda po drugem queryju
             }
-            else if (leto == 2025 && obracunDnMinute.TryGetValue(stevilka, out var dnMinute))
+            else if (nalogLeto == 2025 && obracunDnMinute.TryGetValue(stevilka, out var dnMinute))
             {
                 // leto 2025 — trajanje iz OBRACUN_DN
                 trajanje = dnMinute;
@@ -675,7 +685,7 @@ public class PartnerService
             };
 
             if (int.TryParse(stevilka, out var stNum2) && stNum2 >= 1000000 && stNum2 <= 1999999)
-                helpdeskNalogi.Add(dto);
+                helpdeskNalogi.Add((dto, nalogLeto));
 
             result.Add(dto);
         }
@@ -683,27 +693,27 @@ public class PartnerService
         // Helpdesk nalogi — trajanje iz knjižbe 047512
         if (helpdeskNalogi.Count > 0)
         {
-            var stevilkeIn = string.Join(",", helpdeskNalogi.Select(n => $"'{n.Stevilka.Replace("'", "''")}'"));
+            var stevilkeIn = string.Join(",", helpdeskNalogi.Select(n => $"'{n.Dto.Stevilka.Replace("'", "''")}'"));
+            var letaIn = string.Join(",", helpdeskNalogi.Select(n => n.Leto).Distinct());
 
             await using var cmd2 = new FbCommand($@"
-                SELECT STEVILKA, SUM(COALESCE(KOLICINA, 0))
+                SELECT STEVILKA, LETO, SUM(COALESCE(KOLICINA, 0))
                 FROM FA_DN_NALOG_KNJ
-                WHERE STEVILKA IN ({stevilkeIn}) AND LETO = @Leto AND SIFRA = '047512'
-                GROUP BY STEVILKA", connection);
-
-            cmd2.Parameters.AddWithValue("@Leto", leto);
+                WHERE STEVILKA IN ({stevilkeIn}) AND LETO IN ({letaIn}) AND SIFRA = '047512'
+                GROUP BY STEVILKA, LETO", connection);
 
             await using var reader2 = await cmd2.ExecuteReaderAsync();
             var hdMap = new Dictionary<string, decimal>();
             while (await reader2.ReadAsync())
             {
                 var st = reader2.IsDBNull(0) ? "" : reader2.GetString(0).Trim();
-                hdMap[st] = reader2.GetDecimal(1);
+                var lt = reader2.GetInt32(1);
+                hdMap[$"{st}_{lt}"] = reader2.GetDecimal(2);
             }
 
-            foreach (var nalog in helpdeskNalogi)
+            foreach (var (nalog, nLeto) in helpdeskNalogi)
             {
-                if (hdMap.TryGetValue(nalog.Stevilka, out var min))
+                if (hdMap.TryGetValue($"{nalog.Stevilka}_{nLeto}", out var min))
                     nalog.Trajanje = min;
             }
         }
@@ -861,25 +871,23 @@ public class PartnerService
     /// Pridobi pogodbe za partnerja, ki veljajo v danem letu.
     /// Pogodba velja, èe VELJA_DO je NULL ali VELJA_DO >= 1.1.leto
     /// </summary>
-    public async Task<List<PartnerPogodbaDto>> GetPogodbeAsync(int sifraPartnerja, int leto)
+    public async Task<List<PartnerPogodbaDto>> GetPogodbeAsync(int sifraPartnerja, ObdobjeRange obdobje)
     {
         var result = new List<PartnerPogodbaDto>();
 
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();
 
-        var zacetekLeta = new DateTime(leto, 1, 1);
-
         await using var cmd = new FbCommand(@"
             SELECT STEVILKA, LETO, ST_POGODBE, DATUM, PRVI_RACUN_OD, VELJA_DO,
                    NA_KOLIKO_MESECEV, ST_MINUT, OPOMBA
             FROM FA_POGODBE
             WHERE PARTNER = @Partner
-              AND (VELJA_DO IS NULL OR VELJA_DO >= @ZacetekLeta)
+              AND (VELJA_DO IS NULL OR VELJA_DO >= @Od)
             ORDER BY VELJA_DO DESC, STEVILKA DESC", connection);
 
         cmd.Parameters.AddWithValue("@Partner", sifraPartnerja);
-        cmd.Parameters.AddWithValue("@ZacetekLeta", zacetekLeta);
+        cmd.Parameters.AddWithValue("@Od", obdobje.Od);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -947,22 +955,20 @@ public class PartnerService
     /// <summary>
     /// Pridobi število pogodb in skupne minute za vse partnerje v letu.
     /// </summary>
-    public async Task<Dictionary<int, (int Count, int Minutes)>> GetPogodbeAggAsync(int leto)
+    public async Task<Dictionary<int, (int Count, int Minutes)>> GetPogodbeAggAsync(ObdobjeRange obdobje)
     {
         var result = new Dictionary<int, (int Count, int Minutes)>();
 
         await using var connection = _connectionManager.GetConnection();
         await connection.OpenAsync();
 
-        var zacetekLeta = new DateTime(leto, 1, 1);
-
         await using var cmd = new FbCommand(@"
             SELECT PARTNER, COUNT(*), SUM(COALESCE(ST_MINUT, 0))
             FROM FA_POGODBE
-            WHERE VELJA_DO IS NULL OR VELJA_DO >= @ZacetekLeta
+            WHERE VELJA_DO IS NULL OR VELJA_DO >= @Od
             GROUP BY PARTNER", connection);
 
-        cmd.Parameters.AddWithValue("@ZacetekLeta", zacetekLeta);
+        cmd.Parameters.AddWithValue("@Od", obdobje.Od);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())

@@ -19,4 +19,7 @@ public class FaRacunPlacilo
 
     [Column("SCONTO")]
     public decimal? Sconto { get; set; }
+
+    [Column("DATUM_DOK")]
+    public DateTime? DatumDok { get; set; }
 }

@@ -34,12 +34,12 @@ public class PredracunGridDto
                 if (Placano >= ZnesekKoncni)
                     return "Plaèano";
                 else
-                    return "Delno";
+                    return "Delno pla\u010Dilo";
             }
 
             // Stanje = 2 ali 5 je potrjen
             if (Stanje == 5)
-                return "Potrjen";
+                return "Potrjen vpisan5";
             if (Stanje == 2)
                 return "Plaèan vpisan2";
 
@@ -100,5 +100,43 @@ public class PredracunGridDto
     /// Originalno stanje ob nalaganju (za detekcijo sprememb).
     /// </summary>
     public bool PovezanOriginal { get; set; }
+}
+
+public class PredracunInfoDto
+{
+    public string Stevilka { get; set; } = string.Empty;
+    public int Leto { get; set; }
+    public int? Stanje { get; set; }
+    public decimal ZnesekKoncni { get; set; }
+    public decimal Placano { get; set; }
+    public decimal PlacanoIzRacunov { get; set; }
+    public string StanjePrikaz { get; set; } = string.Empty;
+    public string RacunStatus { get; set; } = string.Empty;
+    public string? PovezaniRacuni { get; set; }
+    public int Minute { get; set; }
+    public int MinutePreostalo { get; set; }
+    public List<PredracunPlaciloInfoDto> Placila { get; set; } = new();
+    public List<PredracunRacunInfoDto> Racuni { get; set; } = new();
+}
+
+public class PredracunPlaciloInfoDto
+{
+    public string PredracunStevilka { get; set; } = string.Empty;
+    public int PredracunLeto { get; set; }
+    public DateTime? Datum { get; set; }
+    public decimal Znesek { get; set; }
+    public decimal Sconto { get; set; }
+    public decimal Skupaj => Znesek + Sconto;
+}
+
+public class PredracunRacunInfoDto
+{
+    public int Stevilka { get; set; }
+    public int Leto { get; set; }
+    public DateTime? Datum { get; set; }
+    public string VirPovezave { get; set; } = string.Empty;
+    public string? PovezanaStevilka { get; set; }
+    public int? PovezanoLeto { get; set; }
+    public decimal? PovezaniZnesek { get; set; }
 }
 

@@ -1,0 +1,95 @@
+@using ObracunDb.Data.DTOs
+
+@* Ponovno uporabljiv filter obdobja: spustni seznam tipov + (pri "Po meri") datuma od/do. *@
+<span style="display:inline-flex; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
+    <span>@Label</span>
+    <DxComboBox Data="@obdobjaOptions"
+                Value="@selectedTip"
+                ValueChanged="@((ObdobjeTip t) => OnTipChanged(t))"
+                TextFieldName="@nameof(ObdobjeOption.Text)"
+                ValueFieldName="@nameof(ObdobjeOption.Tip)"
+                style="width:160px;" />
+    @if (selectedTip == ObdobjeTip.PoMeri)
+    {
+        <span>Od:</span>
+        <DxDateEdit Date="@datumOd"
+                    DateChanged="@((DateTime d) => OnDatumOdChanged(d))"
+                    Format="dd.MM.yyyy"
+                    style="width:140px;" />
+        <span>Do:</span>
+        <DxDateEdit Date="@datumDo"
+                    DateChanged="@((DateTime d) => OnDatumDoChanged(d))"
+                    Format="dd.MM.yyyy"
+                    style="width:140px;" />
+    }
+</span>
+
+@code {
+    /// <summary>Trenutno izbrano obdobje (dvosmerna vezava).</summary>
+    [Parameter] public ObdobjeRange? Value { get; set; }
+
+    /// <summary>Sprozi se ob spremembi obdobja.</summary>
+    [Parameter] public EventCallback<ObdobjeRange> ValueChanged { get; set; }
+
+    /// <summary>Napis pred spustnim seznamom.</summary>
+    [Parameter] public string Label { get; set; } = "Obdobje:";
+
+    ObdobjeTip selectedTip = ObdobjeTip.TrenutniMesec;
+    DateTime datumOd = DateTime.Today;
+    DateTime datumDo = DateTime.Today;
+
+    record ObdobjeOption(ObdobjeTip Tip, string Text);
+
+    static readonly List<ObdobjeOption> obdobjaOptions =
+    [
+        new(ObdobjeTip.TrenutniMesec, "Trenutni mesec"),
+        new(ObdobjeTip.PretekliMesec, "Pretekli mesec"),
+        new(ObdobjeTip.TrenutnoLeto, "Trenutno leto"),
+        new(ObdobjeTip.PretekloLeto, "Preteklo leto"),
+        new(ObdobjeTip.PoMeri, "Po meri")
+    ];
+
+    protected override void OnInitialized()
+    {
+        if (Value != null)
+        {
+            selectedTip = Value.Tip;
+            datumOd = Value.Od;
+            datumDo = Value.Do;
+        }
+    }
+
+    async Task OnTipChanged(ObdobjeTip tip)
+    {
+        selectedTip = tip;
+        if (tip == ObdobjeTip.PoMeri)
+        {
+            await Posodobi(ObdobjeRange.Custom(datumOd, datumDo));
+        }
+        else
+        {
+            var range = ObdobjeRange.Create(tip);
+            datumOd = range.Od;
+            datumDo = range.Do;
+            await Posodobi(range);
+        }
+    }
+
+    async Task OnDatumOdChanged(DateTime d)
+    {
+        datumOd = d;
+        await Posodobi(ObdobjeRange.Custom(datumOd, datumDo));
+    }
+
+    async Task OnDatumDoChanged(DateTime d)
+    {
+        datumDo = d;
+        await Posodobi(ObdobjeRange.Custom(datumOd, datumDo));
+    }
+
+    async Task Posodobi(ObdobjeRange range)
+    {
+        Value = range;
+        await ValueChanged.InvokeAsync(range);
+    }
+}

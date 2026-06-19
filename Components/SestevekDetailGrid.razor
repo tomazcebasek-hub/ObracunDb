@@ -33,10 +33,7 @@ else
     public string Artikel { get; set; } = "";
 
     [Parameter]
-    public int Mesec { get; set; }
-
-    [Parameter]
-    public int Leto { get; set; }
+    public ObdobjeRange Obdobje { get; set; } = ObdobjeRange.Create(ObdobjeTip.TrenutniMesec);
 
     List<SestevekDetailDto>? detailData;
     bool isLoading = true;
@@ -45,7 +42,7 @@ else
     {
         try
         {
-            detailData = await ObracunService.GetSestevekDetailAsync(Leto, Mesec, Artikel);
+            detailData = await ObracunService.GetSestevekDetailAsync(Obdobje, Artikel);
         }
         finally
         {

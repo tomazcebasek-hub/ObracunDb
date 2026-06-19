@@ -3,13 +3,13 @@
 @using ObracunDb.Services
 @using Microsoft.AspNetCore.Components.Sections
 @inject PartnerService PartnerService
+@inject ReklamacijeService ReklamacijeService
 
 <PageTitle>Partnerji</PageTitle>
 <SectionContent SectionName="PageHeaderExtra">
-    <DxButton Text="2025" Click="@(() => OnLetoQuick(2025))"
-              RenderStyle="@(leto == 2025 ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)" SizeMode="SizeMode.Small" CssClass="ms-2" />
-    <DxButton Text="2026" Click="@(() => OnLetoQuick(2026))"
-              RenderStyle="@(leto == 2026 ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)" SizeMode="SizeMode.Small" CssClass="ms-1" />
+    <span style="display:flex; flex:1 1 auto; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap; margin-left:1rem;">
+        <ObdobjeFilter Label="Obdobje:" Value="@obdobje" ValueChanged="@OnObdobjeChanged" />
+    </span>
 </SectionContent>
 
 @if (isLoading)
@@ -78,6 +78,7 @@ else
                     <DxTab Text="Raèuni" />
                     <DxTab Text="Nalogi" />
                     <DxTab Text="Pogodbe" />
+                    <DxTab Text="Reklamacije" />
                 </DxTabs>
 
                 <div style="flex: 1; overflow: auto;">
@@ -165,6 +166,26 @@ else
                         </TotalSummary>
                     </DxGrid>
                 }
+                else if (activeTabIndex == 3)
+                {
+                    <DxGrid Data="@reklamacije"
+                            KeyFieldName="@nameof(ReklamacijaGridDto.Id)"
+                            ShowAllRows="true"
+                            ShowFilterRow="true"
+                            CssClass="w-100 mt-1">
+                        <Columns>
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.DatumZahteve)" Caption="Datum zahteve" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.StevilkePogodb)" Caption="?tevilke pogodb" Width="140px" />
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.TipPrekinitve)" Caption="Tip prekinitve" Width="150px" />
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.RacuniDoDne)" Caption="Ra?uni do dne" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.KdoNajObdela)" Caption="Kdo naj obdela" Width="120px" />
+                            <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.DatumPosredovanja)" Caption="Posredovano" DisplayFormat="dd.MM.yyyy HH:mm" Width="130px" />
+                        </Columns>
+                        <TotalSummary>
+                            <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(ReklamacijaGridDto.Id)" DisplayText="Reklamacij: {0}" />
+                        </TotalSummary>
+                    </DxGrid>
+                }
                 </div>
             }
             else
@@ -237,21 +258,6 @@ else
     </BodyContentTemplate>
 </DxPopup>
 
-<DxPopup Visible="@letoPopupVisible"
-         VisibleChanged="@((bool v) => letoPopupVisible = v)"
-         HeaderText="Izberi leto"
-         Width="250px"
-         Height="180px"
-         ShowCloseButton="true"
-         CloseOnOutsideClick="true">
-    <BodyContentTemplate>
-        <div class="d-flex flex-column gap-2 p-2">
-            <DxSpinEdit @bind-Value="@novoLeto" MinValue="2000" MaxValue="2099" />
-            <DxButton Text="Potrdi" Click="@OnLetoConfirmed" RenderStyle="ButtonRenderStyle.Primary" />
-        </div>
-    </BodyContentTemplate>
-</DxPopup>
-
 @code {
     List<PartnerGridDto>? partnerji;
     IGrid partnerGrid;
@@ -260,6 +266,7 @@ else
     List<RacunKnjizbaDto> knjizbe = new();
     List<PartnerPogodbaDto> pogodbe = new();
     List<PogodbaPozicijaDto> pogodbePozicije = new();
+    List<ReklamacijaGridDto> reklamacije = new();
     bool isLoading = true;
     string? errorMessage;
     int? selectedPartner;
@@ -267,15 +274,13 @@ else
     PartnerNalogDto? selectedNalog;
     bool debugPopupVisible;
     string debugText = "";
-    bool letoPopupVisible;
-    int leto = 2025;
-    int novoLeto = 2025;
+    ObdobjeRange obdobje = ObdobjeRange.Create(ObdobjeTip.TrenutnoLeto);
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            partnerji = await PartnerService.GetAllAsync(leto);
+            partnerji = await PartnerService.GetAllAsync(obdobje);
         }
         catch (Exception ex)
         {
@@ -287,17 +292,9 @@ else
         }
     }
 
-    async Task OnLetoQuick(int novoL)
+    async Task OnObdobjeChanged(ObdobjeRange novo)
     {
-        if (leto == novoL) return;
-        leto = novoL;
-        await OnOsveziClicked();
-    }
-
-    async Task OnLetoConfirmed()
-    {
-        letoPopupVisible = false;
-        leto = novoLeto;
+        obdobje = novo;
         await OnOsveziClicked();
     }
 
@@ -311,11 +308,12 @@ else
         knjizbe = new();
         pogodbe = new();
         pogodbePozicije = new();
+        reklamacije = new();
         selectedNalog = null;
 
         try
         {
-            partnerji = await PartnerService.GetAllAsync(leto);
+            partnerji = await PartnerService.GetAllAsync(obdobje);
         }
         catch (Exception ex)
         {
@@ -374,11 +372,13 @@ else
         try
         {
             if (activeTabIndex == 0)
-                racuni = await PartnerService.GetRacuniAsync(selectedPartner.Value, leto);
+                racuni = await PartnerService.GetRacuniAsync(selectedPartner.Value, obdobje);
             else if (activeTabIndex == 1)
-                nalogi = await PartnerService.GetNalogiAsync(selectedPartner.Value, leto);
+                nalogi = await PartnerService.GetNalogiAsync(selectedPartner.Value, obdobje);
             else if (activeTabIndex == 2)
-                pogodbe = await PartnerService.GetPogodbeAsync(selectedPartner.Value, leto);
+                pogodbe = await PartnerService.GetPogodbeAsync(selectedPartner.Value, obdobje);
+            else if (activeTabIndex == 3)
+                reklamacije = await ReklamacijeService.GetZaPartnerjaAsync(selectedPartner.Value, obdobje);
         }
         catch (Exception ex)
         {

@@ -276,7 +276,7 @@ else
             {
                 var vsi = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, 1, 2026);
                 predracuni = vsi
-                    .Where(p => p.StanjePrikaz is "Potrjen" or "Plačano" or "Delno" or "Porabljeno")
+                    .Where(p => p.StanjePrikaz is "Potrjen" or "Plačano" or "Delno plačilo" or "Porabljeno")
                     .ToList();
             }
             catch

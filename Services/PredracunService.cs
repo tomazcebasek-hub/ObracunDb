@@ -169,7 +169,7 @@ public class PredracunService
             if (racunObstaja.Contains(key))
             {
                 if (!racunZneski.ContainsKey(key))
-                    predracun.PlacanoIzRacunov = 0.01m;
+                    predracun.PlacanoIzRacunov = predracun.ZnesekKoncni;
             }
 
             if (racunStevilke.TryGetValue(key, out var stevilke))
@@ -177,6 +177,149 @@ public class PredracunService
         }
 
         return result;
+    }
+
+    public async Task<PredracunInfoDto> GetPredracunInfoAsync(string stevilka, int leto)
+    {
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        var info = new PredracunInfoDto
+        {
+            Stevilka = stevilka,
+            Leto = leto
+        };
+
+        await using (var cmd = new FbCommand(@"
+            SELECT STANJE, COALESCE(ZNESEK_KONCNI, 0)
+            FROM FA_PREDRACUN
+            WHERE STEVILKA = @Stevilka AND LETO = @Leto", connection))
+        {
+            cmd.Parameters.AddWithValue("@Stevilka", stevilka);
+            cmd.Parameters.AddWithValue("@Leto", leto);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                throw new InvalidOperationException("Predraèun ni bil najden.");
+
+            info.Stanje = reader.IsDBNull(0) ? null : reader.GetInt32(0);
+            info.ZnesekKoncni = reader.GetDecimal(1);
+        }
+
+        await using (var cmd = new FbCommand(@"
+            SELECT PREDRACUN_STEVILKA, PREDRACUN_LETO, COALESCE(ZNESEK, 0), COALESCE(SCONTO, 0), DATUM_DOK
+            FROM FA_RACUN_PLACILO
+            WHERE PREDRACUN_STEVILKA = @Stevilka AND PREDRACUN_LETO = @Leto", connection))
+        {
+            cmd.Parameters.AddWithValue("@Stevilka", stevilka);
+            cmd.Parameters.AddWithValue("@Leto", leto);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                info.Placila.Add(new PredracunPlaciloInfoDto
+                {
+                    PredracunStevilka = reader.GetValue(0).ToString()?.Trim() ?? string.Empty,
+                    PredracunLeto = reader.GetInt32(1),
+                    Znesek = reader.GetDecimal(2),
+                    Sconto = reader.GetDecimal(3),
+                    Datum = reader.IsDBNull(4) ? null : reader.GetDateTime(4)
+                });
+            }
+        }
+
+        info.Placano = info.Placila.Sum(p => p.Skupaj);
+
+        await using (var cmd = new FbCommand(@"
+            SELECT STEVILKA, LETO, DATUM,
+                   PREDRAC1_STEVILKA, PREDRAC1_LETO, COALESCE(PREDRAC1_ZNESEK, 0),
+                   PREDRAC2_STEVILKA, PREDRAC2_LETO, COALESCE(PREDRAC2_ZNESEK, 0),
+                   POVEZAVA_STEVILKA, POVEZAVA_LETO
+            FROM FA_RACUN
+            WHERE (PREDRAC1_STEVILKA = @Stevilka AND PREDRAC1_LETO = @Leto)
+               OR (PREDRAC2_STEVILKA = @Stevilka AND PREDRAC2_LETO = @Leto)
+               OR (POVEZAVA_STEVILKA = @Stevilka AND POVEZAVA_LETO = @Leto)", connection))
+        {
+            cmd.Parameters.AddWithValue("@Stevilka", stevilka);
+            cmd.Parameters.AddWithValue("@Leto", leto);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var racunStevilka = reader.GetInt32(0);
+                var racunLeto = reader.GetInt32(1);
+                DateTime? datum = reader.IsDBNull(2) ? null : reader.GetDateTime(2);
+
+                if (!reader.IsDBNull(3) && !reader.IsDBNull(4) && reader.GetString(3).Trim() == stevilka && reader.GetInt32(4) == leto)
+                {
+                    info.Racuni.Add(new PredracunRacunInfoDto
+                    {
+                        Stevilka = racunStevilka,
+                        Leto = racunLeto,
+                        Datum = datum,
+                        VirPovezave = "PREDRAC1",
+                        PovezanaStevilka = reader.GetString(3).Trim(),
+                        PovezanoLeto = reader.GetInt32(4),
+                        PovezaniZnesek = reader.GetDecimal(5)
+                    });
+                }
+
+                if (!reader.IsDBNull(6) && !reader.IsDBNull(7) && reader.GetString(6).Trim() == stevilka && reader.GetInt32(7) == leto)
+                {
+                    info.Racuni.Add(new PredracunRacunInfoDto
+                    {
+                        Stevilka = racunStevilka,
+                        Leto = racunLeto,
+                        Datum = datum,
+                        VirPovezave = "PREDRAC2",
+                        PovezanaStevilka = reader.GetString(6).Trim(),
+                        PovezanoLeto = reader.GetInt32(7),
+                        PovezaniZnesek = reader.GetDecimal(8)
+                    });
+                }
+
+                if (!reader.IsDBNull(9) && !reader.IsDBNull(10) && reader.GetString(9).Trim() == stevilka && reader.GetInt32(10) == leto)
+                {
+                    info.Racuni.Add(new PredracunRacunInfoDto
+                    {
+                        Stevilka = racunStevilka,
+                        Leto = racunLeto,
+                        Datum = datum,
+                        VirPovezave = "POVEZAVA",
+                        PovezanaStevilka = reader.GetString(9).Trim(),
+                        PovezanoLeto = reader.GetInt32(10),
+                        PovezaniZnesek = null
+                    });
+                }
+            }
+        }
+
+        info.PlacanoIzRacunov = info.Racuni
+            .Where(r => r.VirPovezave is "PREDRAC1" or "PREDRAC2")
+            .Sum(r => r.PovezaniZnesek ?? 0m);
+        if (info.Racuni.Count > 0 && info.PlacanoIzRacunov == 0)
+            info.PlacanoIzRacunov = info.ZnesekKoncni;
+
+        info.PovezaniRacuni = info.Racuni.Count == 0
+            ? null
+            : string.Join(", ", info.Racuni.Select(r => r.Stevilka.ToString()).Distinct().OrderBy(s => s));
+
+        var gridDto = new PredracunGridDto
+        {
+            Stevilka = stevilka,
+            Leto = leto,
+            Stanje = info.Stanje,
+            ZnesekKoncni = info.ZnesekKoncni,
+            Placano = info.Placano,
+            PlacanoIzRacunov = info.PlacanoIzRacunov,
+            PovezaniRacuni = info.PovezaniRacuni,
+            Minute = info.Minute,
+            MinutePreostalo = info.MinutePreostalo
+        };
+        info.StanjePrikaz = gridDto.StanjePrikaz;
+        info.RacunStatus = gridDto.RacunStatus;
+
+        return info;
     }
 
     /// <summary>

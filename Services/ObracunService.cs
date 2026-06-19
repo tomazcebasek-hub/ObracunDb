@@ -233,7 +233,7 @@ public class ObracunService
     /// <summary>
     /// Pridobi seštevek postavk po artiklu za določeno obdobje.
     /// </summary>
-    public async Task<(List<SestevekGridDto> Postavke, int SteviloPartnerjev)> GetSestevekPoArtikluAsync(int leto, int mesec)
+    public async Task<(List<SestevekGridDto> Postavke, int SteviloPartnerjev)> GetSestevekPoArtikluAsync(ObdobjeRange obdobje)
     {
         var postavke = new List<SestevekGridDto>();
 
@@ -253,12 +253,12 @@ public class ObracunService
                 COUNT(DISTINCT p.PARTNER) AS ST_PARTNERJEV
             FROM OBRACUN_OSNUTEK_POS p
             LEFT JOIN FA_ARTIKEL a ON p.ARTIKEL = a.SIFRA
-            WHERE p.LETO = @Leto AND p.MESEC = @Mesec
+            WHERE (p.LETO * 100 + p.MESEC) BETWEEN @Od AND @Do
             GROUP BY p.ARTIKEL, a.NAZIV, a.NAZIV2, a.ENOTA
             ORDER BY p.ARTIKEL", connection);
 
-        cmd.Parameters.AddWithValue("@Leto", leto);
-        cmd.Parameters.AddWithValue("@Mesec", mesec);
+        cmd.Parameters.AddWithValue("@Od", obdobje.KljucOd);
+        cmd.Parameters.AddWithValue("@Do", obdobje.KljucDo);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -283,9 +283,9 @@ public class ObracunService
         int steviloPartnerjev = 0;
         await using var cmd2 = new FbCommand(@"
             SELECT COUNT(DISTINCT PARTNER) FROM OBRACUN_OSNUTEK_POS
-            WHERE LETO = @Leto AND MESEC = @Mesec", connection);
-        cmd2.Parameters.AddWithValue("@Leto", leto);
-        cmd2.Parameters.AddWithValue("@Mesec", mesec);
+            WHERE (LETO * 100 + MESEC) BETWEEN @Od AND @Do", connection);
+        cmd2.Parameters.AddWithValue("@Od", obdobje.KljucOd);
+        cmd2.Parameters.AddWithValue("@Do", obdobje.KljucDo);
         var obj = await cmd2.ExecuteScalarAsync();
         if (obj != null && obj != DBNull.Value)
             steviloPartnerjev = Convert.ToInt32(obj);
@@ -320,7 +320,7 @@ public class ObracunService
     /// <summary>
     /// Pridobi seštevek postavk po partnerjih za določen artikel.
     /// </summary>
-    public async Task<List<SestevekDetailDto>> GetSestevekDetailAsync(int leto, int mesec, string artikel)
+    public async Task<List<SestevekDetailDto>> GetSestevekDetailAsync(ObdobjeRange obdobje, string artikel)
     {
         var rezultat = new List<SestevekDetailDto>();
 
@@ -337,12 +337,12 @@ public class ObracunService
                 COALESCE(SUM(p.KOLICINA * p.CENA * (1 - p.RABAT / 100)), 0) AS NETO_VREDNOST
             FROM OBRACUN_OSNUTEK_POS p
             LEFT JOIN PARTNER pa ON p.PARTNER = pa.SIFRA
-            WHERE p.LETO = @Leto AND p.MESEC = @Mesec AND p.ARTIKEL = @Artikel
+            WHERE (p.LETO * 100 + p.MESEC) BETWEEN @Od AND @Do AND p.ARTIKEL = @Artikel
             GROUP BY p.PARTNER, pa.NAZIV
             ORDER BY pa.NAZIV, p.PARTNER", connection);
 
-        cmd.Parameters.AddWithValue("@Leto", leto);
-        cmd.Parameters.AddWithValue("@Mesec", mesec);
+        cmd.Parameters.AddWithValue("@Od", obdobje.KljucOd);
+        cmd.Parameters.AddWithValue("@Do", obdobje.KljucDo);
         cmd.Parameters.AddWithValue("@Artikel", artikel);
 
         await using var reader = await cmd.ExecuteReaderAsync();
@@ -1564,7 +1564,7 @@ public class ObracunService
             if (racunZneski.TryGetValue(key, out var znesek))
                 predracun.PlacanoIzRacunov = znesek;
             else if (racunObstaja.Contains(key))
-                predracun.PlacanoIzRacunov = 0.01m;
+                predracun.PlacanoIzRacunov = predracun.ZnesekKoncni;
 
             if (racunStevilke.TryGetValue(key, out var stevilke))
                 predracun.PovezaniRacuni = string.Join(", ", stevilke.OrderBy(s => s));
