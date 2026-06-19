@@ -2,9 +2,11 @@
 @rendermode InteractiveServer
 @using ObracunDb.Data.DTOs
 @using ObracunDb.Data.Entities
+@using ObracunDb.Data.Menus
 @using ObracunDb.Services
 @inject UporabnikService UporabnikService
 @inject AuthService AuthService
+@inject MenuDovoljenjeService MenuDovoljenje
 
 <PageTitle>Uporabniki</PageTitle>
 
@@ -42,13 +44,14 @@ else
                 </DxGridDataColumn>
                 <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.DatumUstvarjen)" Caption="Ustvarjen" DisplayFormat="dd.MM.yyyy" Width="110px" />
                 <DxGridDataColumn FieldName="@nameof(UporabnikGridDto.DatumZadnjaPrijava)" Caption="Zadnja prijava" DisplayFormat="dd.MM.yyyy HH:mm" Width="145px" />
-                <DxGridDataColumn Caption="" Width="160px">
+                <DxGridDataColumn Caption="" Width="200px">
                     <CellDisplayTemplate Context="cellCtx">
                         @{
                             var item = (UporabnikGridDto)cellCtx.DataItem;
                         }
                         <a href="javascript:void(0)" @onclick="@(() => ShowEdit(item))" class="me-2" title="Uredi">✏️</a>
                         <a href="javascript:void(0)" @onclick="@(() => ShowResetPassword(item))" class="me-2" title="Ponastavi geslo">🔑</a>
+                        <a href="javascript:void(0)" @onclick="@(() => ShowDovoljenja(item))" class="me-2" title="Dovoljenja do menujev">🗂️</a>
                         <a href="javascript:void(0)" @onclick="@(() => ShowDelete(item))" style="color:#e57373;" title="Izbriši">🗑️</a>
                     </CellDisplayTemplate>
                 </DxGridDataColumn>
@@ -137,6 +140,41 @@ else
     </FooterContentTemplate>
 </DxPopup>
 
+@* === Dovoljenja do menujev === *@
+<DxPopup @bind-Visible="@showDovoljenjaDialog"
+         HeaderText="@($"Dovoljenja do menujev — {dovoljenjaIme}")"
+         Width="480px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p class="text-muted" style="font-size:0.85rem;">
+            Označite menije, ki jih uporabnik vidi. Meni s podmeniji je viden, če je označen vsaj en podmeni.
+        </p>
+        <div style="max-height:420px; overflow:auto;">
+            @foreach (var item in MenuDefinition.Vse)
+            {
+                <div style="display:flex; align-items:center; gap:8px; padding:2px 0;">
+                    <DxCheckBox Checked="@IsKljucIzbran(item.Kljuc)"
+                                CheckedChanged="@((bool v) => ToggleKljuc(item.Kljuc, v))" />
+                    <span style="font-weight:600;">@item.Naziv</span>
+                </div>
+                @foreach (var child in item.Otroci)
+                {
+                    <div style="display:flex; align-items:center; gap:8px; padding:2px 0 2px 28px;">
+                        <DxCheckBox Checked="@IsKljucIzbran(child.Kljuc)"
+                                    CheckedChanged="@((bool v) => ToggleKljuc(child.Kljuc, v))" />
+                        <span>@child.Naziv</span>
+                    </div>
+                }
+            }
+        </div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Shrani" Click="@SaveDovoljenja" RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Prekliči" Click="@(() => showDovoljenjaDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
 @code {
     List<UporabnikGridDto>? uporabniki;
     bool isLoading = true;
@@ -169,11 +207,25 @@ else
     string? deleteIme;
     int? deleteId;
 
+    // Dovoljenja do menujev dialog
+    bool showDovoljenjaDialog;
+    string? dovoljenjaIme;
+    int? dovoljenjaId;
+    HashSet<string> izbraniKljuci = new(StringComparer.OrdinalIgnoreCase);
+
     protected override async Task OnInitializedAsync()
     {
         var user = AuthService.CurrentUser;
         imaDovoljenDostop = user != null &&
             (user.VlogaEnum == UporabnikVloga.Admin || user.VlogaEnum == UporabnikVloga.Vodja);
+
+        // Dostop dovolimo tudi uporabnikom, ki imajo eksplicitno dovoljenje za meni "uporabniki"
+        // (npr. zasejani jankokuhar/admin/katja), da si lahko nastavijo vidnost menijev.
+        if (!imaDovoljenDostop && user != null)
+        {
+            var kljuci = await MenuDovoljenje.GetDovoljeniKljuciAsync(user.Id);
+            imaDovoljenDostop = kljuci.Contains("uporabniki");
+        }
 
         if (imaDovoljenDostop)
         {
@@ -293,6 +345,50 @@ else
         {
             editError = $"Napaka pri brisanju: {ex.Message}";
         }
+    }
+
+    async Task ShowDovoljenja(UporabnikGridDto item)
+    {
+        dovoljenjaId = item.Id;
+        dovoljenjaIme = item.UporabniskoIme;
+        izbraniKljuci = await MenuDovoljenje.GetDovoljeniKljuciAsync(item.Id);
+        showDovoljenjaDialog = true;
+    }
+
+    bool IsKljucIzbran(string kljuc) => izbraniKljuci.Contains(kljuc);
+
+    void ToggleKljuc(string kljuc, bool izbran)
+    {
+        if (izbran)
+        {
+            izbraniKljuci.Add(kljuc);
+
+            // Če obkljukamo podmeni, samodejno obkljukaj še glavni meni,
+            // sicer se v navigaciji ne prikaže.
+            var stars = MenuDefinition.NajdiStarsaKljuc(kljuc);
+            if (stars != null)
+                izbraniKljuci.Add(stars);
+        }
+        else
+        {
+            izbraniKljuci.Remove(kljuc);
+
+            // Če odkljukamo glavni meni, odkljukaj še vse njegove podmenije.
+            var item = MenuDefinition.Vse.FirstOrDefault(m => string.Equals(m.Kljuc, kljuc, StringComparison.OrdinalIgnoreCase));
+            if (item != null)
+            {
+                foreach (var child in item.Otroci)
+                    izbraniKljuci.Remove(child.Kljuc);
+            }
+        }
+    }
+
+    async Task SaveDovoljenja()
+    {
+        if (!dovoljenjaId.HasValue) return;
+
+        await MenuDovoljenje.SaveAsync(dovoljenjaId.Value, izbraniKljuci);
+        showDovoljenjaDialog = false;
     }
 
     class VlogaItem

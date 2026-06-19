@@ -33,7 +33,8 @@ public static class MigrationManager
         { 114, ApplyV114 },
         { 115, ApplyV115 },
         { 116, ApplyV116 },
-        { 117, ApplyV117 }
+        { 117, ApplyV117 },
+        { 118, ApplyV118 }
     };
 
     /// <summary>
@@ -155,6 +156,7 @@ public static class MigrationManager
         115 => "OBRACUN_OSNUTEK_SPREMEMBA: nova tabela za ročne korekture količin",
         116 => "OBRACUN_REKLAMACIJA: novi tabeli za reklamacije",
         117 => "OBRACUN_PRILOGA: priponke reklamacij",
+        118 => "OBRACUN_MENU_DOVOLJENJE: vidnost menijev po uporabniku",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -603,5 +605,34 @@ public static class MigrationManager
             ADD CONSTRAINT FK_OBR_PRILOGA_REKLAMACIJA
             FOREIGN KEY (ID_REKLAMACIJA) REFERENCES OBRACUN_REKLAMACIJA (ID)", status);
         return null;
+    }
+
+    /// <summary>
+    /// Verzija 118: Nova tabela OBRACUN_MENU_DOVOLJENJE za vidnost menijev po uporabniku.
+    /// Logika "allow-list": obstoj vrstice pomeni, da uporabnik ta meni vidi.
+    /// Zaseje meni "uporabniki" za jankokuhar, admin in katja, da si lahko nastavijo ostale menije.
+    /// </summary>
+    private static string? ApplyV118(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_MENU_DOVOLJENJE (
+            ID            INTEGER NOT NULL PRIMARY KEY,
+            UPORABNIK_ID  INTEGER NOT NULL,
+            MENU_KLJUC    VARCHAR(50) NOT NULL
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBRACUN_MENU_DOVOLJENJE_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBRACUN_MENU_DOVOLJENJE FOR OBRACUN_MENU_DOVOLJENJE
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBRACUN_MENU_DOVOLJENJE_ID, 1);
+            END", status);
+        ExecuteSql(conn, @"ALTER TABLE OBRACUN_MENU_DOVOLJENJE
+            ADD CONSTRAINT UQ_OBR_MENU_DOVOLJENJE UNIQUE (UPORABNIK_ID, MENU_KLJUC)", status);
+
+        var affected = ExecuteSql(conn, @"INSERT INTO OBRACUN_MENU_DOVOLJENJE (UPORABNIK_ID, MENU_KLJUC)
+            SELECT ID, 'uporabniki' FROM OBRACUN_UPORABNIK
+            WHERE UPPER(UPORABNISKO_IME) IN ('JANKOKUHAR', 'ADMIN', 'KATJA')", status);
+
+        return $"Zasejanih dovoljenj 'uporabniki': {affected}";
     }
 }

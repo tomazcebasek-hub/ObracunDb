@@ -1,81 +1,83 @@
 ﻿@using ObracunDb.Data.Entities
+@using ObracunDb.Data.Menus
 @using ObracunDb.Services
 @inject NavigationManager NavigationManager
 @inject AuthService AuthService
+@inject MenuDovoljenjeService MenuDovoljenje
 @implements IDisposable
 
 <div>
     <DxMenu Orientation="@Orientation.Vertical" CssClass="menu">
         <Items>
-            @*<DxMenuItem NavigateUrl="/" Text="Home" CssClass="@MenuItemCssClass("/")" IconCssClass="icon icon-home"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/counter" Text="Counter" CssClass="@MenuItemCssClass("/counter")" IconCssClass="icon icon-counter"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/weather" Text="Weather" CssClass="@MenuItemCssClass("/weather")" IconCssClass="icon icon-weather"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/chart" Text="Chart" CssClass="@MenuItemCssClass("/chart")" IconCssClass="icon icon-chart"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/pdfviewer" Text="PDF Viewer" CssClass="@MenuItemCssClass("/pdfviewer")" IconCssClass="icon icon-pdf-viewer"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/pivottable" Text="Pivot Table" CssClass="@MenuItemCssClass("/pivottable")" IconCssClass="icon icon-pivot-table"></DxMenuItem>*@
-            <DxMenuItem NavigateUrl="/potrjevanje" Text="Potrjevanje nalogov" CssClass="@MenuItemCssClass("/potrjevanje")" IconCssClass="icon icon-calendar"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/pregled-nalogov" Text="Pregled nalogov" CssClass="@MenuItemCssClass("/pregled-nalogov")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
-            <DxMenuItem Text="Obračun" IconCssClass="icon icon-scheduler">
-                <Items>
-                    <DxMenuItem NavigateUrl="/izvedi-obracun" Text="Izvedi obračun" CssClass="@MenuItemCssClass("/izvedi-obracun")" IconCssClass="icon icon-scheduler"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/spremembe-kolicin" Text="Spremembe količin" CssClass="@MenuItemCssClass("/spremembe-kolicin")" IconCssClass="icon icon-counter"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/koriscenje-predracuni" Text="Koriščenje predračunov" CssClass="@MenuItemCssClass("/koriscenje-predracuni")" IconCssClass="icon icon-chart"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/sestevek" Text="Seštevek" CssClass="@MenuItemCssClass("/sestevek")" IconCssClass="icon icon-counter"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/sestevek-dela" Text="Seštevek dela" CssClass="@MenuItemCssClass("/sestevek-dela")" IconCssClass="icon icon-counter"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/osnutki" Text="Osnutki" CssClass="@MenuItemCssClass("/osnutki")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/zapis-v-faw" Text="Zapis v FAW" CssClass="@MenuItemCssClass("/zapis-v-faw")" IconCssClass="icon icon-scheduler"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/zakljucek" Text="Zaključek meseca" CssClass="@MenuItemCssClass("/zakljucek")" IconCssClass="icon icon-counter"></DxMenuItem>
-                </Items>
-            </DxMenuItem>
-            <DxMenuItem Text="Pregledi" IconCssClass="icon icon-pivot-table">
-                <Items>
-                    <DxMenuItem NavigateUrl="/pregled-ur" Text="Pregled ur serviserji" CssClass="@MenuItemCssClass("/pregled-ur")" IconCssClass="icon icon-counter"></DxMenuItem>
-                    <DxMenuItem NavigateUrl="/predracuni" Text="Predračuni" CssClass="@MenuItemCssClass("/predracuni")" IconCssClass="icon icon-scheduler"></DxMenuItem>
-                </Items>
-            </DxMenuItem>
-            <DxMenuItem NavigateUrl="/koriscenje-pogodb" Text="Koriščenje pogodb" CssClass="@MenuItemCssClass("/koriscenje-pogodb")" IconCssClass="icon icon-chart"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/partnerji" Text="Partnerji" CssClass="@MenuItemCssClass("/partnerji")" IconCssClass="icon icon-tree-list"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/paketi" Text="Paketi" CssClass="@MenuItemCssClass("/paketi")" IconCssClass="icon icon-counter"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/partner-minute" Text="Partner minute" CssClass="@MenuItemCssClass("/partner-minute")" IconCssClass="icon icon-chart"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/reklamacije" Text="Reklamacije" CssClass="@MenuItemCssClass("/reklamacije")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
-            @if (IsAdminOrVodja)
+            @foreach (var item in MenuDefinition.Vse)
             {
-                <DxMenuItem NavigateUrl="/nastavitve" Text="Nastavitve" CssClass="@MenuItemCssClass("/nastavitve")" IconCssClass="icon icon-settings"></DxMenuItem>
+                if (!JeViden(item))
+                {
+                    continue;
+                }
+
+                if (item.ImaOtroke)
+                {
+                    <DxMenuItem Text="@item.Naziv" IconCssClass="@item.Ikona">
+                        <Items>
+                            @foreach (var child in item.Otroci)
+                            {
+                                if (!JeViden(child))
+                                {
+                                    continue;
+                                }
+                                <DxMenuItem NavigateUrl="@child.Url" Text="@child.Naziv" CssClass="@MenuItemCssClass(child.Url)" IconCssClass="@child.Ikona"></DxMenuItem>
+                            }
+                        </Items>
+                    </DxMenuItem>
+                }
+                else
+                {
+                    <DxMenuItem NavigateUrl="@item.Url" Text="@item.Naziv" CssClass="@MenuItemCssClass(item.Url)" IconCssClass="@item.Ikona"></DxMenuItem>
+                }
             }
-            <DxMenuItem NavigateUrl="/loceni-racuni" Text="Ločeni računi" CssClass="@MenuItemCssClass("/loceni-racuni")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/parametri" Text="Barva ozadja" CssClass="@MenuItemCssClass("/parametri")" IconCssClass="icon icon-settings"></DxMenuItem>
-            <DxMenuItem NavigateUrl="/utility" Text="Utility" CssClass="@MenuItemCssClass("/utility")" IconCssClass="icon icon-counter"></DxMenuItem>
-            @if (IsAdminOrVodja)
-            {
-                <DxMenuItem NavigateUrl="/uporabniki" Text="Uporabniki" CssClass="@MenuItemCssClass("/uporabniki")" IconCssClass="icon icon-tree-list"></DxMenuItem>
-            }
-            @if (AuthService.JeDirektor)
-            {
-                <DxMenuItem NavigateUrl="/revizijska-sled" Text="Revizijska sled" CssClass="@MenuItemCssClass("/revizijska-sled")" IconCssClass="icon icon-pivot-table"></DxMenuItem>
-            }
-            <DxMenuItem NavigateUrl="/test" Text="TEST" CssClass="@MenuItemCssClass("/test")" IconCssClass="icon icon-counter"></DxMenuItem>
-            @*<DxMenuItem NavigateUrl="/scheduler" Text="Scheduler" CssClass="@MenuItemCssClass("/scheduler")" IconCssClass="icon icon-scheduler"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/treelist" Text="TreeList" CssClass="@MenuItemCssClass("/treelist")" IconCssClass="icon icon-tree-list"></DxMenuItem>*@
-            @*<DxMenuItem NavigateUrl="/parametri" Text="Uporabniški parametri" CssClass="@MenuItemCssClass("/parametri")" IconCssClass="icon icon-settings"></DxMenuItem>*@
         </Items>
     </DxMenu>
 </div>
 
 @code {
     private string? currentLocalPath;
+    private HashSet<string> dovoljeniKljuci = new(StringComparer.OrdinalIgnoreCase);
 
-    bool IsAdminOrVodja
-    {
-        get
-        {
-            var user = AuthService.CurrentUser;
-            return user != null && (user.VlogaEnum == UporabnikVloga.Admin || user.VlogaEnum == UporabnikVloga.Vodja);
-        }
-    }
-
-    protected override void OnInitialized() {
+    protected override async Task OnInitializedAsync() {
         currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;
         NavigationManager.LocationChanged += OnLocationChanged;
+        AuthService.OnAuthenticationStateChanged += OnAuthChanged;
+        MenuDovoljenje.OnDovoljenjaSpremenjena += OnDovoljenjaSpremenjena;
+        await NaloziDovoljenjaAsync();
+    }
+
+    /// <summary>
+    /// Ali je postavka menija vidna za trenutnega uporabnika.
+    /// Starš (s podmeniji) je viden, če ima dovoljenje IN vsaj enega vidnega otroka.
+    /// </summary>
+    private bool JeViden(MenuItemDef item) {
+        if (item.ImaOtroke) {
+            return dovoljeniKljuci.Contains(item.Kljuc) && item.Otroci.Any(JeViden);
+        }
+        return dovoljeniKljuci.Contains(item.Kljuc);
+    }
+
+    private async Task NaloziDovoljenjaAsync() {
+        var user = AuthService.CurrentUser;
+        dovoljeniKljuci = user != null
+            ? await MenuDovoljenje.GetDovoljeniKljuciAsync(user.Id)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async void OnDovoljenjaSpremenjena() {
+        await NaloziDovoljenjaAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnAuthChanged() {
+        await NaloziDovoljenjaAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) {
@@ -83,11 +85,13 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private string? MenuItemCssClass(string itemPath) {
+    private string? MenuItemCssClass(string? itemPath) {
         return string.Equals(currentLocalPath, itemPath, StringComparison.OrdinalIgnoreCase) ? "menu-item-active" : null;
     }
 
     public void Dispose() {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        AuthService.OnAuthenticationStateChanged -= OnAuthChanged;
+        MenuDovoljenje.OnDovoljenjaSpremenjena -= OnDovoljenjaSpremenjena;
     }
 }
