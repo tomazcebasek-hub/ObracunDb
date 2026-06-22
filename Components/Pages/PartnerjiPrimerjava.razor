@@ -1,0 +1,86 @@
+@page "/partnerji-primerjava"
+@rendermode InteractiveServer
+@using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
+@using ObracunDb.Services
+@inject PartnerPrimerjavaService PrimerjavaService
+@inject ParametriService Parametri
+@inject NavigationManager NavigationManager
+
+<PageTitle>Primerjava med leti</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 8px;">
+    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <h5 style="margin:0;">Primerjava med leti</h5>
+        <DxButton Text="Nazaj" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => NavigationManager.NavigateTo("/partnerji"))" />
+    </div>
+
+    @if (isLoading)
+    {
+        <p>Nalagam podatke...</p>
+    }
+    else if (errorMessage != null)
+    {
+        <div class="alert alert-danger">@errorMessage</div>
+    }
+    else
+    {
+        <div style="flex: 1; overflow: auto;">
+            <DxGrid Data="@vrstice"
+                    KeyFieldName="@nameof(PartnerPrimerjavaDto.Sifra)"
+                    PageSize="int.MaxValue"
+                    PagerVisible="false"
+                    ShowFilterRow="true"
+                    FilterMenuButtonDisplayMode="GridFilterMenuButtonDisplayMode.Always"
+                    AllowSort="true"
+                    CssClass="w-100 h-100">
+                <Columns>
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Sifra)" Caption="Šifra" Width="120px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Naziv)" Caption="Naziv partnerja" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Znesek1)" Caption="@($"Znesek {leto1}")" DisplayFormat="N2" Width="180px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Znesek2)" Caption="@($"Znesek {leto2}")" DisplayFormat="N2" Width="180px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Razlika)" Caption="Razlika" DisplayFormat="N2" Width="160px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Procent)" Caption="%" DisplayFormat="N2" Width="110px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.Znesek1DoDanes)" Caption="@($"{leto1} do danes")" DisplayFormat="N2" Width="180px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.RazlikaDoDanes)" Caption="Razlika do danes" DisplayFormat="N2" Width="170px" />
+                    <DxGridDataColumn FieldName="@nameof(PartnerPrimerjavaDto.ProcentDoDanes)" Caption="% do danes" DisplayFormat="N2" Width="130px" />
+                </Columns>
+                <TotalSummary>
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PartnerPrimerjavaDto.Sifra)" DisplayText="Partnerjev: {0}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPrimerjavaDto.Znesek1)" DisplayText="{0:N2}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPrimerjavaDto.Znesek2)" DisplayText="{0:N2}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPrimerjavaDto.Razlika)" DisplayText="{0:N2}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPrimerjavaDto.Znesek1DoDanes)" DisplayText="{0:N2}" />
+                    <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PartnerPrimerjavaDto.RazlikaDoDanes)" DisplayText="{0:N2}" />
+                </TotalSummary>
+            </DxGrid>
+        </div>
+    }
+</div>
+
+@code {
+    List<PartnerPrimerjavaDto>? vrstice;
+    bool isLoading = true;
+    string? errorMessage;
+    int leto2;  // tekoče leto obračuna
+    int leto1;  // prejšnje leto
+
+    protected override async Task OnInitializedAsync()
+    {
+        leto2 = Parametri.GetInt(ObracunParam.LetoObracuna);
+        leto1 = leto2 - 1;
+
+        try
+        {
+            vrstice = await PrimerjavaService.GetPrimerjavaAsync(leto1, leto2);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

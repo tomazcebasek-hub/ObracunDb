@@ -33,6 +33,7 @@ builder.Services.AddScoped<PredracunService>();
 builder.Services.AddScoped<PaketMinuteService>();
 builder.Services.AddScoped<PartnerMinuteService>();
 builder.Services.AddScoped<PartnerService>();
+builder.Services.AddScoped<PartnerPrimerjavaService>();
 builder.Services.AddScoped<ZakljucekService>();
 builder.Services.AddScoped<ObracunIzvedbaService>();
 builder.Services.AddScoped<FawService>();

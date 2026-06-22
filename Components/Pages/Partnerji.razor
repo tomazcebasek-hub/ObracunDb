@@ -4,11 +4,13 @@
 @using Microsoft.AspNetCore.Components.Sections
 @inject PartnerService PartnerService
 @inject ReklamacijeService ReklamacijeService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Partnerji</PageTitle>
 <SectionContent SectionName="PageHeaderExtra">
     <span style="display:flex; flex:1 1 auto; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap; margin-left:1rem;">
         <ObdobjeFilter Label="Obdobje:" Value="@obdobje" ValueChanged="@OnObdobjeChanged" />
+        <span style="margin-left:auto;"><DxButton Text="Primerjava med leti" RenderStyle="ButtonRenderStyle.Primary" Click="@(() => NavigationManager.NavigateTo("/partnerji-primerjava"))" /></span>
     </span>
 </SectionContent>
 
