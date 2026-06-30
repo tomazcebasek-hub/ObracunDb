@@ -70,6 +70,7 @@
                                 CssClass="w-100" />
                 </FilterRowCellTemplate>
             </DxGridDataColumn>
+            <DxGridDataColumn FieldName="@nameof(PredracunGridDto.NazivProdajalca)" Caption="Prodajalec" Width="160px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekKoncni)" Caption="Znesek" DisplayFormat="N2" Width="120px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Placano)" Caption="Plačano" DisplayFormat="N2" Width="120px" />
             <DxGridDataColumn FieldName="@nameof(PredracunGridDto.PlacanoIzRacunov)" Caption="PlačRač" DisplayFormat="N2" Width="120px" />
@@ -231,6 +232,102 @@
                 </DxTabPage>
             </DxTabs>
         </DxTabPage>
+        <DxTabPage Text="Graf po prodajalcih">
+            <DxTabs>
+                <DxTabPage Text="Zneski">
+                    <div style="padding:12px 0; min-height:0; overflow:hidden; height:calc(100vh - 230px);">
+                        <DxChart Data="@GrafProdajalciData" Height="580px">
+                            <DxChartTitle Text="Zneski predračunov po prodajalcih" />
+                            <DxChartCommonSeries NameField="@((PredracunProdajalecGrafDto s) => s.Prodajalec)"
+                                                 ArgumentField="@(s => s.Mesec)"
+                                                 ValueField="@(s => s.Znesek)"
+                                                 SeriesType="ChartSeriesType.StackedBar" />
+                            <DxChartArgumentAxis>
+                                <DxChartAxisLabel RotationAngle="-45" />
+                            </DxChartArgumentAxis>
+                            <DxChartLegend Position="RelativePosition.Outside"
+                                           HorizontalAlignment="HorizontalAlignment.Right" />
+                            <DxChartTooltip Enabled="true" Position="RelativePosition.Outside">
+                                <div style="padding:4px 8px;">
+                                    <b>@context.Point.SeriesName</b><br />
+                                    @context.Point.Argument: @($"{context.Point.Value:N2}") €
+                                </div>
+                            </DxChartTooltip>
+                        </DxChart>
+                    </div>
+                </DxTabPage>
+                <DxTabPage Text="Število predračunov">
+                    <div style="padding:12px 0; min-height:0; overflow:hidden; height:calc(100vh - 230px);">
+                        <DxChart Data="@GrafProdajalciData" Height="580px">
+                            <DxChartTitle Text="Število predračunov po prodajalcih" />
+                            <DxChartCommonSeries NameField="@((PredracunProdajalecGrafDto s) => s.Prodajalec)"
+                                                 ArgumentField="@(s => s.Mesec)"
+                                                 ValueField="@(s => s.Kolicina)"
+                                                 SeriesType="ChartSeriesType.StackedBar" />
+                            <DxChartArgumentAxis>
+                                <DxChartAxisLabel RotationAngle="-45" />
+                            </DxChartArgumentAxis>
+                            <DxChartLegend Position="RelativePosition.Outside"
+                                           HorizontalAlignment="HorizontalAlignment.Right" />
+                            <DxChartTooltip Enabled="true" Position="RelativePosition.Outside">
+                                <div style="padding:4px 8px;">
+                                    <b>@context.Point.SeriesName</b><br />
+                                    @context.Point.Argument: @context.Point.Value predračunov
+                                </div>
+                            </DxChartTooltip>
+                        </DxChart>
+                    </div>
+                </DxTabPage>
+            </DxTabs>
+        </DxTabPage>
+        <DxTabPage Text="Graf po komercialistih/tipih">
+            <DxTabs>
+                <DxTabPage Text="Količina">
+                    <div style="padding:12px 0; min-height:0; overflow:hidden; height:calc(100vh - 230px);">
+                        <DxChart Data="@GrafKomercialistiTipiData" Height="580px" SeriesClick="@OnGrafKomercialistiTipiClick">
+                            <DxChartTitle Text="Število predračunov po komercialistih in tipih" />
+                            <DxChartCommonSeries NameField="@((PredracunKomercialistTipGrafDto s) => s.Stanje)"
+                                                 ArgumentField="@(s => s.Komercialist)"
+                                                 ValueField="@(s => s.Kolicina)"
+                                                 SeriesType="ChartSeriesType.StackedBar" />
+                            <DxChartArgumentAxis>
+                                <DxChartAxisLabel RotationAngle="-45" />
+                            </DxChartArgumentAxis>
+                            <DxChartLegend Position="RelativePosition.Outside"
+                                           HorizontalAlignment="HorizontalAlignment.Right" />
+                            <DxChartTooltip Enabled="true" Position="RelativePosition.Outside">
+                                <div style="padding:4px 8px;">
+                                    <b>@context.Point.SeriesName</b><br />
+                                    @context.Point.Argument: @context.Point.Value predračunov
+                                </div>
+                            </DxChartTooltip>
+                        </DxChart>
+                    </div>
+                </DxTabPage>
+                <DxTabPage Text="Vrednost">
+                    <div style="padding:12px 0; min-height:0; overflow:hidden; height:calc(100vh - 230px);">
+                        <DxChart Data="@GrafKomercialistiTipiData" Height="580px" SeriesClick="@OnGrafKomercialistiTipiClick">
+                            <DxChartTitle Text="Vrednost predračunov po komercialistih in tipih" />
+                            <DxChartCommonSeries NameField="@((PredracunKomercialistTipGrafDto s) => s.Stanje)"
+                                                 ArgumentField="@(s => s.Komercialist)"
+                                                 ValueField="@(s => s.Znesek)"
+                                                 SeriesType="ChartSeriesType.StackedBar" />
+                            <DxChartArgumentAxis>
+                                <DxChartAxisLabel RotationAngle="-45" />
+                            </DxChartArgumentAxis>
+                            <DxChartLegend Position="RelativePosition.Outside"
+                                           HorizontalAlignment="HorizontalAlignment.Right" />
+                            <DxChartTooltip Enabled="true" Position="RelativePosition.Outside">
+                                <div style="padding:4px 8px;">
+                                    <b>@context.Point.SeriesName</b><br />
+                                    @context.Point.Argument: @($"{context.Point.Value:N2}") €
+                                </div>
+                            </DxChartTooltip>
+                        </DxChart>
+                    </div>
+                </DxTabPage>
+            </DxTabs>
+        </DxTabPage>
     </DxTabs>
     }
     </div>
@@ -333,6 +430,34 @@
     </FooterContentTemplate>
 </DxPopup>
 
+<DxPopup @bind-Visible="@showGrafPredracuni"
+         HeaderText="@grafPredracuniTitle"
+         Width="1100px"
+         CloseOnOutsideClick="true"
+         ShowFooter="true">
+    <BodyContentTemplate>
+        <DxGrid Data="@grafPredracuni" ShowAllRows="true" ShowFilterRow="true" CssClass="w-100">
+            <Columns>
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Stevilka)" Caption="Številka" Width="100px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy" Width="110px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.SifraKupca)" Caption="Šifra" Width="90px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.NazivPartnerja)" Caption="Naziv partnerja" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.NazivKomercialista)" Caption="Komercialist" Width="160px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.RacunStatus)" Caption="Račun" Width="120px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Stanje" Width="150px" />
+                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekKoncni)" Caption="Znesek" DisplayFormat="N2" Width="120px" />
+            </Columns>
+            <TotalSummary>
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Count" FieldName="@nameof(PredracunGridDto.Stevilka)" DisplayText="Predračunov: {0}" />
+                <DxGridSummaryItem SummaryType="GridSummaryItemType.Sum" FieldName="@nameof(PredracunGridDto.ZnesekKoncni)" DisplayText="{0:N2}" />
+            </TotalSummary>
+        </DxGrid>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showGrafPredracuni = false)" />
+    </FooterContentTemplate>
+</DxPopup>
+
 @code {
     IGrid? grid;
     List<PredracunGridDto>? predracuni;
@@ -343,12 +468,19 @@
     string predracunInfoTitle = "Info predračuna";
     string? predracunInfoError;
     PredracunInfoDto? predracunInfo;
+    bool showGrafPredracuni;
+    string grafPredracuniTitle = "Predračuni";
+    List<PredracunGridDto> grafPredracuni = new();
 
     List<string> komercialistiLookup = new();
 
     List<PredracunStatistikaDto> StatistikaFiltered => BuildStatistikaFiltered();
 
     List<PredracunKomercialistGrafDto> GrafKomercialistiData => BuildGrafKomercialistiData();
+
+    List<PredracunKomercialistTipGrafDto> GrafKomercialistiTipiData => BuildGrafKomercialistiTipiData();
+
+    List<PredracunProdajalecGrafDto> GrafProdajalciData => BuildGrafProdajalciData();
 
     // Stanje multi-select filter
     List<string> stanjeLookup = new();
@@ -510,12 +642,12 @@
             .GroupBy(p => new
             {
                 MesecDatum = new DateTime(p.Datum!.Value.Year, p.Datum.Value.Month, 1),
-                Stanje = string.IsNullOrEmpty(p.StanjePrikaz) ? "Ostalo" : p.StanjePrikaz
+                Stanje = GetTipPredracunaZaGrafPoTipih(p)
             })
             .ToDictionary(g => (g.Key.MesecDatum, g.Key.Stanje), g => new { Kolicina = g.Count(), Znesek = g.Sum(p => p.ZnesekKoncni) });
 
         var stanja = source
-            .Select(p => string.IsNullOrEmpty(p.StanjePrikaz) ? "Ostalo" : p.StanjePrikaz)
+            .Select(GetTipPredracunaZaGrafPoTipih)
             .Distinct()
             .OrderBy(s => s)
             .ToList();
@@ -534,6 +666,13 @@
                 };
             }))
             .ToList();
+    }
+
+    static string GetTipPredracunaZaGrafPoTipih(PredracunGridDto p)
+    {
+        if (p.RacunStatus == "Račun") return "Račun";
+
+        return string.IsNullOrEmpty(p.StanjePrikaz) ? "Ostalo" : p.StanjePrikaz;
     }
 
     List<PredracunKomercialistGrafDto> BuildGrafKomercialistiData()
@@ -569,6 +708,94 @@
             }))
             .ToList();
     }
+
+    List<PredracunProdajalecGrafDto> BuildGrafProdajalciData()
+    {
+        var source = filteredPredracuni ?? new();
+        var grouped = source
+            .Where(p => p.Datum != null)
+            .GroupBy(p => new
+            {
+                MesecDatum = new DateTime(p.Datum!.Value.Year, p.Datum.Value.Month, 1),
+                Prodajalec = string.IsNullOrWhiteSpace(p.NazivProdajalca) ? "Brez prodajalca" : p.NazivProdajalca!
+            })
+            .ToDictionary(g => (g.Key.MesecDatum, g.Key.Prodajalec), g => new { Kolicina = g.Count(), Znesek = g.Sum(p => p.ZnesekKoncni) });
+
+        var prodajalci = source
+            .Select(p => string.IsNullOrWhiteSpace(p.NazivProdajalca) ? "Brez prodajalca" : p.NazivProdajalca!)
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+        return GetChartMonths()
+            .SelectMany(m => prodajalci.Select(k =>
+            {
+                grouped.TryGetValue((m, k), out var value);
+                return new PredracunProdajalecGrafDto
+                {
+                    MesecDatum = m,
+                    Mesec = $"{m.Month}/{m.Year}",
+                    Prodajalec = k,
+                    Znesek = value?.Znesek ?? 0,
+                    Kolicina = value?.Kolicina ?? 0
+                };
+            }))
+            .ToList();
+    }
+
+    List<PredracunKomercialistTipGrafDto> BuildGrafKomercialistiTipiData()
+    {
+        var source = filteredPredracuni ?? new();
+
+        var komercialisti = source
+            .GroupBy(p => string.IsNullOrWhiteSpace(p.NazivKomercialista) ? "Brez komercialista" : p.NazivKomercialista!)
+            .Select(g => new { Komercialist = g.Key, Kolicina = g.Count() })
+            .OrderByDescending(g => g.Kolicina)
+            .ThenBy(g => g.Komercialist)
+            .Select(g => g.Komercialist)
+            .ToList();
+
+        var stanja = source
+            .Select(GetTipPredracunaZaGrafPoTipih)
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+        var grouped = source
+            .GroupBy(p => new
+            {
+                Komercialist = string.IsNullOrWhiteSpace(p.NazivKomercialista) ? "Brez komercialista" : p.NazivKomercialista!,
+                Stanje = GetTipPredracunaZaGrafPoTipih(p)
+            })
+            .ToDictionary(g => (g.Key.Komercialist, g.Key.Stanje), g => new { Kolicina = g.Count(), Znesek = g.Sum(p => p.ZnesekKoncni) });
+
+        return komercialisti
+            .SelectMany(k => stanja.Select(s => new PredracunKomercialistTipGrafDto
+            {
+                Komercialist = k,
+                Stanje = s,
+                Kolicina = grouped.TryGetValue((k, s), out var value) ? value.Kolicina : 0,
+                Znesek = value?.Znesek ?? 0
+            }))
+            .ToList();
+    }
+
+    void OnGrafKomercialistiTipiClick(ChartSeriesClickEventArgs e)
+    {
+        var komercialist = e.Point.Argument?.ToString() ?? string.Empty;
+        var tip = e.Series.Name?.ToString() ?? string.Empty;
+
+        grafPredracuni = (filteredPredracuni ?? new())
+            .Where(p => GetKomercialistZaGraf(p) == komercialist && GetTipPredracunaZaGrafPoTipih(p) == tip)
+            .OrderByDescending(p => p.ZnesekKoncni)
+            .ToList();
+
+        grafPredracuniTitle = $"Predračuni: {komercialist} / {tip}";
+        showGrafPredracuni = true;
+    }
+
+    static string GetKomercialistZaGraf(PredracunGridDto p)
+        => string.IsNullOrWhiteSpace(p.NazivKomercialista) ? "Brez komercialista" : p.NazivKomercialista!;
 
     void ApplyObdobjeFilter()
     {

@@ -26,10 +26,6 @@
 {
     <p>Nalagam podatke...</p>
 }
-else if (errorMessage != null)
-{
-    <div class="alert alert-danger">@errorMessage</div>
-}
 else
 {
     <div style="display: flex; flex-direction: column; height: calc(100vh - 4rem); gap: 4px;">
@@ -197,6 +193,7 @@ else
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.ZnesekBrezDdv)" Caption="Znesek" DisplayFormat="N2" Width="95px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Minute)" Caption="Min" Width="55px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.MinutePreostalo)" Caption="Preost." Width="65px" />
+                                <DxGridDataColumn FieldName="@nameof(PredracunGridDto.MinuteVTemMesecu)" Caption="V tem" Width="65px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.StanjePrikaz)" Caption="Status" Width="80px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.PovezaniRacuni)" Caption="Račun" Width="80px" />
                                 <DxGridDataColumn FieldName="@nameof(PredracunGridDto.Povezan)" Caption="Povezan" Width="65px" AllowSort="false" TextAlignment="GridTextAlignment.Center">
@@ -249,7 +246,8 @@ else
             {
                 <div style="display: flex; align-items: center; gap: 4px;">
                     <DxCheckBox Checked="@selectedNalog.PolovicnaKilometrina"
-                                CheckedChanged="@((bool v) => OnPolovicnaChanged(v))" />
+                                CheckedChanged="@((bool v) => OnPolovicnaChanged(v))"
+                                Enabled="@(!ImaNeveljavnoKombinacijo)" />
                     <span>Pol. km</span>
                 </div>
                 <DxComboBox Data="@kajObracunamOptions"
@@ -259,17 +257,22 @@ else
                             ValueFieldName="Value"
                             NullText="Kaj obračunam..."
                             style="width: 160px;" />
-                <DxButton Text="Vnos artikla" RenderStyle="ButtonRenderStyle.Warning" Click="@OpenVnosArtikla" />
-                <DxButton Text="Poveži predračune" RenderStyle="ButtonRenderStyle.Success" Click="@OpenPoveziPredracune" />
-                <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" Click="@OpenStatistika" />
-                <DxButton Text="Račun" RenderStyle="ButtonRenderStyle.Danger" Click="@OnRacunClick" />
-                <DxButton Text="Nalogi" RenderStyle="ButtonRenderStyle.Light" Click="@OnNalogiClick" />
+                <span>Ne obr. min:</span>
+                <DxSpinEdit Value="@selectedNalog.MinuteKiSeNeObracunajo"
+                            ValueChanged="@((int v) => OnMinuteKiSeNeObracunajoChanged(v))"
+                            MinValue="0"
+                            style="width: 90px;" />
+                <DxButton Text="Vnos artikla" RenderStyle="ButtonRenderStyle.Warning" Click="@OpenVnosArtikla" Enabled="@(!ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Poveži predračune" RenderStyle="ButtonRenderStyle.Success" Click="@OpenPoveziPredracune" Enabled="@(!ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Info" RenderStyle="ButtonRenderStyle.Info" Click="@OpenStatistika" Enabled="@(!ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Račun" RenderStyle="ButtonRenderStyle.Danger" Click="@OnRacunClick" Enabled="@(!ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Nalogi" RenderStyle="ButtonRenderStyle.Light" Click="@OnNalogiClick" Enabled="@(!ImaNeveljavnoKombinacijo)" />
             }
             <div style="margin-left: auto; display: flex; gap: 6px;">
-                <DxButton Text="Nič + Potrdi" RenderStyle="ButtonRenderStyle.Dark" Click="@OnNicPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
-                <DxButton Text="Potrdi" RenderStyle="ButtonRenderStyle.Primary" Click="@OnPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
-                <DxButton Text="Pobriši potrditev" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnPobrisiPotrditev" Enabled="@(selectedNalog != null && selectedNalog.Pregledan)" />
-                <DxButton Text="Potrdi + naslednji" RenderStyle="ButtonRenderStyle.Info" Click="@OnPotrdiInNaslednji" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan)" />
+                <DxButton Text="Nič + Potrdi" RenderStyle="ButtonRenderStyle.Dark" Click="@OnNicPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan && !ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Potrdi" RenderStyle="ButtonRenderStyle.Primary" Click="@OnPotrdi" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan && !ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Pobriši potrditev" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnPobrisiPotrditev" Enabled="@(selectedNalog != null && selectedNalog.Pregledan && !ImaNeveljavnoKombinacijo)" />
+                <DxButton Text="Potrdi + naslednji" RenderStyle="ButtonRenderStyle.Info" Click="@OnPotrdiInNaslednji" Enabled="@(selectedNalog != null && !selectedNalog.Pregledan && !ImaNeveljavnoKombinacijo)" />
             </div>
         </div>
     </div>
@@ -474,6 +477,21 @@ else
                         NazivPartnerja="@(selectedNalog?.NazivPartnerja)" />
 }
 
+<DxPopup Visible="@(!string.IsNullOrEmpty(errorMessage))"
+         VisibleChanged="@((bool v) => { if (!v) errorMessage = null; })"
+         HeaderText="Napaka"
+         Width="520px"
+         ShowFooter="true"
+         CloseOnEscape="false"
+         CloseOnOutsideClick="false">
+    <BodyContentTemplate>
+        <div class="alert alert-danger" style="margin:0;">@errorMessage</div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" RenderStyle="ButtonRenderStyle.Primary" Click="@(() => errorMessage = null)" />
+    </FooterContentTemplate>
+</DxPopup>
+
 @code {
     IGrid? gridNalogi;
     List<PotrjevanjeNalogDto> nalogi = new();
@@ -493,6 +511,12 @@ else
     bool samoNepotrjeni = true;
     DateTime filterDatumOd;
     DateTime filterDatumDo;
+
+    bool ImaNeveljavnoKombinacijo => selectedNalog != null && GetNalogPotrditevError(selectedNalog) != null;
+    bool kajObracunamCakaShranjevanje;
+    KajObracunam kajObracunamStaraVrednost;
+    bool minuteKiSeNeObracunajoCakajoShranjevanje;
+    int minuteKiSeNeObracunajoStaraVrednost;
 
     // Vnos artikla dialog
     bool showVnosArtikla;
@@ -624,19 +648,18 @@ else
             _nalogLoading = true;
             selectedNalog = row;
             _lastSelectedNalogKey = key;
+            kajObracunamCakaShranjevanje = false;
+            minuteKiSeNeObracunajoCakajoShranjevanje = false;
 
             try
             {
                 nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(row.Stevilka, row.Leto);
 
-                // Predračune naloži samo če se partner spremeni
-                if (row.Partner != _lastPredracunPartner)
-                {
-                    selectedPredracun = null;
-                    predracunPostavke = new();
-                    predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, _mesec, _leto);
-                    _lastPredracunPartner = row.Partner;
-                }
+                // Predračune naloži ob vsaki izbiri naloga, ker je stolpec "V tem" odvisen od datuma/številke naloga.
+                selectedPredracun = null;
+                predracunPostavke = new();
+                predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(row.Partner, _mesec, _leto, row.Datum, row.Stevilka);
+                _lastPredracunPartner = row.Partner;
 
                 // Avtomatsko izberi prvi predračun in naloži njegove postavke,
                 // ker FocusedRowChanged se ob osvežitvi podatkov ne sproži zanesljivo.
@@ -694,11 +717,26 @@ else
     async Task OnKajObracunamChanged(KajObracunam value)
     {
         if (selectedNalog == null) return;
+
+        var staraVrednost = kajObracunamCakaShranjevanje
+            ? kajObracunamStaraVrednost
+            : selectedNalog.KajObracunam;
+        selectedNalog.KajObracunam = value;
+
+        var validationError = GetNalogPotrditevError(selectedNalog, kajOverride: value);
+        if (validationError != null)
+        {
+            kajObracunamCakaShranjevanje = true;
+            kajObracunamStaraVrednost = staraVrednost;
+            errorMessage = validationError;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         try
         {
-            var staraVrednost = selectedNalog.KajObracunam;
-            selectedNalog.KajObracunam = value;
             await ObracunService.SaveKajObracunamAsync(selectedNalog.Stevilka, selectedNalog.Leto, staraVrednost, value);
+            kajObracunamCakaShranjevanje = false;
         }
         catch (Exception ex)
         {
@@ -706,9 +744,67 @@ else
         }
     }
 
+    async Task OnMinuteKiSeNeObracunajoChanged(int value)
+    {
+        if (selectedNalog == null) return;
+
+        var staraVrednost = minuteKiSeNeObracunajoCakajoShranjevanje
+            ? minuteKiSeNeObracunajoStaraVrednost
+            : selectedNalog.MinuteKiSeNeObracunajo;
+        selectedNalog.MinuteKiSeNeObracunajo = value;
+
+        var validationError = GetNalogPotrditevError(selectedNalog);
+        if (validationError != null)
+        {
+            minuteKiSeNeObracunajoCakajoShranjevanje = true;
+            minuteKiSeNeObracunajoStaraVrednost = staraVrednost;
+            errorMessage = validationError;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        try
+        {
+            await ObracunService.SaveMinuteKiSeNeObracunajoAsync(selectedNalog.Stevilka, selectedNalog.Leto, staraVrednost, value, selectedNalog.Trajanje);
+            minuteKiSeNeObracunajoCakajoShranjevanje = false;
+            if (kajObracunamCakaShranjevanje && GetNalogPotrditevError(selectedNalog) == null)
+            {
+                await ObracunService.SaveKajObracunamAsync(selectedNalog.Stevilka, selectedNalog.Leto, kajObracunamStaraVrednost, selectedNalog.KajObracunam);
+                kajObracunamCakaShranjevanje = false;
+            }
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Napaka: {ex.Message}";
+        }
+    }
+
+    string? GetNalogPotrditevError(PotrjevanjeNalogDto nalog, int? minuteOverride = null, KajObracunam? kajOverride = null)
+    {
+        var minute = minuteOverride ?? nalog.MinuteKiSeNeObracunajo;
+        var kaj = kajOverride ?? nalog.KajObracunam;
+        if (minute < 0)
+            return "Minute, ki se ne obračunajo, ne smejo biti manjše od 0.";
+        if (minute > nalog.Trajanje)
+            return $"Minute, ki se ne obračunajo ({minute}), ne smejo biti večje od trajanja naloga ({nalog.Trajanje}).";
+        if (minute > 0 && (kaj == KajObracunam.Nic || kaj == KajObracunam.Km))
+            return "Pri 'Nič' ali 'Samo km' ne smejo biti vnesene minute, ki se ne obračunajo.";
+
+        return null;
+    }
+
     async Task OnPotrdi()
     {
         if (selectedNalog == null || selectedNalog.Pregledan) return;
+
+        var validationError = GetNalogPotrditevError(selectedNalog);
+        if (validationError != null)
+        {
+            errorMessage = validationError;
+            return;
+        }
+
         try
         {
             await ObracunService.PotrdiNalogAsync(selectedNalog.Stevilka, selectedNalog.Leto);
@@ -723,6 +819,13 @@ else
     async Task OnNicPotrdi()
     {
         if (selectedNalog == null || selectedNalog.Pregledan) return;
+
+        if (selectedNalog.MinuteKiSeNeObracunajo > 0)
+        {
+            errorMessage = "Pri 'Nič' ne smejo biti vnesene minute, ki se ne obračunajo.";
+            return;
+        }
+
         try
         {
             var staraVrednost = selectedNalog.KajObracunam;
@@ -840,6 +943,14 @@ else
     async Task OnPotrdiInNaslednji()
     {
         if (selectedNalog == null || selectedNalog.Pregledan) return;
+
+        var validationError = GetNalogPotrditevError(selectedNalog);
+        if (validationError != null)
+        {
+            errorMessage = validationError;
+            return;
+        }
+
         try
         {
             await ObracunService.PotrdiNalogAsync(selectedNalog.Stevilka, selectedNalog.Leto);
@@ -859,11 +970,8 @@ else
                 predracunPostavke = new();
                 nalogPostavke = await ObracunService.GetPostavkeNalogaAsync(naslednji.Stevilka, naslednji.Leto);
 
-                if (naslednji.Partner != _lastPredracunPartner)
-                {
-                    predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(naslednji.Partner, _mesec, _leto);
-                    _lastPredracunPartner = naslednji.Partner;
-                }
+                predracuni = await ObracunService.GetPredracuniZaPartnerjaAsync(naslednji.Partner, _mesec, _leto, naslednji.Datum, naslednji.Stevilka);
+                _lastPredracunPartner = naslednji.Partner;
 
                 await NaloziPovezanStanje(naslednji.Stevilka, naslednji.Leto);
                 await gridNalogi.SetFocusedDataItemAsync(naslednji);

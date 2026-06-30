@@ -12,6 +12,8 @@ public class PredracunGridDto
     public string? NazivPartnerja { get; set; }
     public string? SifraKomercialista { get; set; }
     public string? NazivKomercialista { get; set; }
+    public string? SifraProdajalca { get; set; }
+    public string? NazivProdajalca { get; set; }
     public int? Stanje { get; set; }
     public decimal ZnesekKoncni { get; set; }
     public decimal Placano { get; set; }
@@ -80,6 +82,11 @@ public class PredracunGridDto
     /// Preostale minute (Minute - poraba v preteklih mesecih).
     /// </summary>
     public int MinutePreostalo { get; set; }
+
+    /// <summary>
+    /// Minute nalogov tekoèega meseca pred trenutno izbranim nalogom.
+    /// </summary>
+    public int MinuteVTemMesecu { get; set; }
 
     /// <summary>
     /// Številke povezanih raèunov (iz FA_RACUN).

@@ -26,6 +26,7 @@ public class PotrjevanjeNalogDto
     public string? Opis { get; set; }
     public bool PolovicnaKilometrina { get; set; }
     public KajObracunam KajObracunam { get; set; }
+    public int MinuteKiSeNeObracunajo { get; set; }
     public double? Kilometri { get; set; }
 
     public string Key => $"{Stevilka}_{Leto}";

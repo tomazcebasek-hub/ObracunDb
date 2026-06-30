@@ -115,6 +115,84 @@ namespace ObracunDb.Services
         }
 
         /// <summary>
+        /// Vrne novo razdelitev z največ toliko minutami kot je zahtevano, proporcionalno po kategorijah.
+        /// </summary>
+        public MinuteRazdelitev VzemiMinut(int minute)
+        {
+            var skupaj = SkupajMinut;
+            if (minute <= 0 || skupaj <= 0)
+                return new MinuteRazdelitev();
+            if (minute >= skupaj)
+                return Kopija();
+
+            var result = new MinuteRazdelitev();
+            var ostane = minute;
+            var kategorije = new (Action<int> Set, int Vrednost)[]
+            {
+                (v => result.Delavnik_Dnevna = v, Delavnik_Dnevna),
+                (v => result.Delavnik_Popoldanska = v, Delavnik_Popoldanska),
+                (v => result.Delavnik_Nocna = v, Delavnik_Nocna),
+                (v => result.Vikend_Dnevna = v, Vikend_Dnevna),
+                (v => result.Vikend_Popoldanska = v, Vikend_Popoldanska),
+                (v => result.Vikend_Nocna = v, Vikend_Nocna),
+                (v => result.Praznik_Dnevna = v, Praznik_Dnevna),
+                (v => result.Praznik_Popoldanska = v, Praznik_Popoldanska),
+                (v => result.Praznik_Nocna = v, Praznik_Nocna)
+            };
+
+            var zadnjiPozitivni = Array.FindLastIndex(kategorije, k => k.Vrednost > 0);
+            for (var i = 0; i < kategorije.Length; i++)
+            {
+                var vrednost = kategorije[i].Vrednost;
+                if (vrednost <= 0)
+                    continue;
+
+                var vzeto = i == zadnjiPozitivni
+                    ? ostane
+                    : Math.Min(vrednost, (int)Math.Floor((decimal)vrednost * minute / skupaj));
+                kategorije[i].Set(vzeto);
+                ostane -= vzeto;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Vrne razliko med to in drugo razdelitvijo.
+        /// </summary>
+        public MinuteRazdelitev Odstej(MinuteRazdelitev druga)
+        {
+            return new MinuteRazdelitev
+            {
+                Delavnik_Dnevna = Delavnik_Dnevna - druga.Delavnik_Dnevna,
+                Delavnik_Popoldanska = Delavnik_Popoldanska - druga.Delavnik_Popoldanska,
+                Delavnik_Nocna = Delavnik_Nocna - druga.Delavnik_Nocna,
+                Vikend_Dnevna = Vikend_Dnevna - druga.Vikend_Dnevna,
+                Vikend_Popoldanska = Vikend_Popoldanska - druga.Vikend_Popoldanska,
+                Vikend_Nocna = Vikend_Nocna - druga.Vikend_Nocna,
+                Praznik_Dnevna = Praznik_Dnevna - druga.Praznik_Dnevna,
+                Praznik_Popoldanska = Praznik_Popoldanska - druga.Praznik_Popoldanska,
+                Praznik_Nocna = Praznik_Nocna - druga.Praznik_Nocna
+            };
+        }
+
+        private MinuteRazdelitev Kopija()
+        {
+            return new MinuteRazdelitev
+            {
+                Delavnik_Dnevna = Delavnik_Dnevna,
+                Delavnik_Popoldanska = Delavnik_Popoldanska,
+                Delavnik_Nocna = Delavnik_Nocna,
+                Vikend_Dnevna = Vikend_Dnevna,
+                Vikend_Popoldanska = Vikend_Popoldanska,
+                Vikend_Nocna = Vikend_Nocna,
+                Praznik_Dnevna = Praznik_Dnevna,
+                Praznik_Popoldanska = Praznik_Popoldanska,
+                Praznik_Nocna = Praznik_Nocna
+            };
+        }
+
+        /// <summary>
         /// Vrne berljiv izpis razdelitve.
         /// </summary>
         public override string ToString()

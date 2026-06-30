@@ -1,0 +1,14 @@
+@if (Visible)
+{
+    <div class="export-splash-overlay">
+        <div class="export-splash-box">
+            <div class="export-splash-spinner"></div>
+            <div>@Text</div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Text { get; set; } = "Izvažam podatke...";
+}

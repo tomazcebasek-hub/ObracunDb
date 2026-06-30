@@ -12,6 +12,8 @@ public class PartnerGridDto
     public decimal BlagoNab { get; set; }
     public decimal Storitve { get; set; }
     public decimal Skupaj => Storitve + BlagoNab;
+    public decimal ProgramerjiUre { get; set; }
+    public decimal ProgramerjiVrednost { get; set; }
     public int SteviloNalogov { get; set; }
     public decimal UreObr { get; set; }
     public decimal UreNeobr { get; set; }

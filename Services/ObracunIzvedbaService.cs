@@ -1429,25 +1429,40 @@ namespace ObracunDb.Services
 
                 // Ločeno štej minute glede na KajObracunam
                 var minutNaloga = razdelitevNaloga.SkupajMinut;
+                var minuteKiSeNeObracunajo = obracunDn?.MinuteKiSeNeObracunajo ?? 0;
+                if (minuteKiSeNeObracunajo > minutNaloga)
+                    throw new InvalidOperationException($"Nalog {nalog.Stevilka}/{nalog.Leto}: minute, ki se ne obračunajo ({minuteKiSeNeObracunajo}), so večje od trajanja naloga ({minutNaloga}).");
+
+                if (minuteKiSeNeObracunajo > 0 && obracunDn != null && (obracunDn.KajObracunam == KajObracunam.Nic || obracunDn.KajObracunam == KajObracunam.Km))
+                    throw new InvalidOperationException($"Nalog {nalog.Stevilka}/{nalog.Leto}: pri 'Nič' ali 'Samo km' ne smejo biti vnesene minute, ki se ne obračunajo.");
+
+                var neobracunanaRazdelitevNaloga = minuteKiSeNeObracunajo > 0
+                    ? razdelitevNaloga.VzemiMinut(minuteKiSeNeObracunajo)
+                    : new MinuteRazdelitev();
+                var obracunanaRazdelitevNaloga = minuteKiSeNeObracunajo > 0
+                    ? razdelitevNaloga.Odstej(neobracunanaRazdelitevNaloga)
+                    : razdelitevNaloga;
+                var minutZaObracun = obracunanaRazdelitevNaloga.SkupajMinut;
                 var seObracunajoMinute = nalog.Fakturirana != 1 
                     && obracunDn != null 
                     && (obracunDn.KajObracunam == KajObracunam.KmMin || obracunDn.KajObracunam == KajObracunam.Min || obracunDn.KajObracunam == KajObracunam.ObveznoZaracunaj);
                 var jeObveznoZaracunaj = seObracunajoMinute && obracunDn!.KajObracunam == KajObracunam.ObveznoZaracunaj;
                 if (seObracunajoMinute)
                 {
-                    minuteObracunane += minutNaloga;
-                    obracunaneRazdelitev.Pristej(razdelitevNaloga);
+                    minuteObracunane += minutZaObracun;
+                    minuteNeobracunane += neobracunanaRazdelitevNaloga.SkupajMinut;
+                    obracunaneRazdelitev.Pristej(obracunanaRazdelitevNaloga);
                     if (jeObveznoZaracunaj)
-                        obveznoRazdelitev.Pristej(razdelitevNaloga);
+                        obveznoRazdelitev.Pristej(obracunanaRazdelitevNaloga);
 
                     // Preveri ali je helpdesk nalog (za konsistentno uporabo minutePogodbe)
                     var jeHelpdesk = nalog.Stevilka.Length == 7 && nalog.Stevilka.StartsWith("1");
                     if (jeHelpdesk)
                         imaHelpdeskNalogeZaObracun = true;
                     else if (jeObveznoZaracunaj)
-                        obveznoTerenskaRazdelitev.Pristej(razdelitevNaloga);
+                        obveznoTerenskaRazdelitev.Pristej(obracunanaRazdelitevNaloga);
                     else
-                        terenskaRazdelitev.Pristej(razdelitevNaloga);
+                        terenskaRazdelitev.Pristej(obracunanaRazdelitevNaloga);
                 }
                 else
                 {
@@ -1522,7 +1537,17 @@ namespace ObracunDb.Services
                 // ObveznoZaracunaj: ne odštevaj iz sklada (null)
                 // Poišči povezane predračune za ta nalog
                 ctx.NalogPredracunPovezave.TryGetValue((nalog.Stevilka, nalog.Leto), out var povezaniPredracuniNaloga);
-                ZapisiNalogObracun(ctx, nalog, razdelitevNaloga, seObracunajoMinute ? 1 : 0, imaPogodbo, jeObveznoZaracunaj ? null : sklad, povezaniPredracuniNaloga, trajanje);
+                if (seObracunajoMinute)
+                {
+                    if (neobracunanaRazdelitevNaloga.SkupajMinut > 0)
+                        ZapisiNalogObracun(ctx, nalog, neobracunanaRazdelitevNaloga, 0, imaPogodbo, null, null, trajanje);
+                    if (obracunanaRazdelitevNaloga.SkupajMinut > 0)
+                        ZapisiNalogObracun(ctx, nalog, obracunanaRazdelitevNaloga, 1, imaPogodbo, jeObveznoZaracunaj ? null : sklad, povezaniPredracuniNaloga, trajanje);
+                }
+                else
+                {
+                    ZapisiNalogObracun(ctx, nalog, razdelitevNaloga, 0, imaPogodbo, null, null, trajanje);
+                }
 
                 // === Obdelaj kilometrino (samo za naloge z Fakturirana=0) ===
                 if (nalog.Fakturirana != 1)

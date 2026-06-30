@@ -1295,27 +1295,30 @@ public class ObracunService
             }
         }
 
-        // 6. Preberi KAJ_OBRACUNAM iz OBRACUN_DN
+        // 6. Preberi KAJ_OBRACUNAM in minute, ki se ne obračunajo, iz OBRACUN_DN
         {
             var stevilkeIn = string.Join(",", nalogi.Select(n => $"'{n.Stevilka.Replace("'", "''")}'"));
             var letaIn = string.Join(",", nalogi.Select(n => n.Leto).Distinct());
             await using var cmd = new FbCommand($@"
-                SELECT STEVILKA, LETO, KAJ_OBRACUNAM
+                SELECT STEVILKA, LETO, KAJ_OBRACUNAM, COALESCE(MINUTE_KI_SE_NE_OBRACUNAJO, 0)
                 FROM OBRACUN_DN
                 WHERE STEVILKA IN ({stevilkeIn}) AND LETO IN ({letaIn})", connection);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            var obracunDn = new Dictionary<(string, int), KajObracunam>();
+            var obracunDn = new Dictionary<(string, int), (KajObracunam Kaj, int MinuteNeObracunaj)>();
             while (await reader.ReadAsync())
             {
                 var key = (reader.GetString(0).Trim(), reader.GetInt32(1));
-                obracunDn[key] = (KajObracunam)reader.GetInt32(2);
+                obracunDn[key] = ((KajObracunam)reader.GetInt32(2), reader.GetInt32(3));
             }
 
             foreach (var n in nalogi)
             {
-                if (obracunDn.TryGetValue((n.Stevilka, n.Leto), out var kaj))
-                    n.KajObracunam = kaj;
+                if (obracunDn.TryGetValue((n.Stevilka, n.Leto), out var obr))
+                {
+                    n.KajObracunam = obr.Kaj;
+                    n.MinuteKiSeNeObracunajo = obr.MinuteNeObracunaj;
+                }
             }
         }
 
@@ -1456,7 +1459,7 @@ public class ObracunService
     /// <summary>
     /// Pridobi predračune za partnerja (status 5 ali plačani).
     /// </summary>
-    public async Task<List<PredracunGridDto>> GetPredracuniZaPartnerjaAsync(int partner, int? predMesec = null, int? predLeto = null)
+    public async Task<List<PredracunGridDto>> GetPredracuniZaPartnerjaAsync(int partner, int? predMesec = null, int? predLeto = null, DateTime? doDatuma = null, string? doStevilka = null)
     {
         var result = new List<PredracunGridDto>();
 
@@ -1651,7 +1654,77 @@ public class ObracunService
             }
         }
 
+        if (predMesec != null && predLeto != null && doDatuma.HasValue && !string.IsNullOrWhiteSpace(doStevilka))
+        {
+            var minuteVTem = await GetMinuteVTemMesecuZaPartnerjaAsync(connection, partner, predMesec.Value, predLeto.Value, doDatuma.Value, doStevilka);
+            foreach (var predracun in result)
+                predracun.MinuteVTemMesecu = minuteVTem;
+        }
+
         return result;
+    }
+
+    private static async Task<int> GetMinuteVTemMesecuZaPartnerjaAsync(FbConnection connection, int partner, int mesec, int leto, DateTime doDatuma, string doStevilka)
+    {
+        var datumOd = new DateTime(leto, mesec, 1);
+        var datumDoEks = datumOd.AddMonths(1);
+        var nalogi = new List<(string Stevilka, int Leto, DateTime Datum, DateTime Zacetek, DateTime Konec, int Fakturirana, KajObracunam Kaj, int MinuteNeObracunaj, int? HelpdeskMinute)>();
+
+        await using (var cmd = new FbCommand(@"
+            SELECT n.STEVILKA, n.LETO, n.ZACETEK_DATUM, n.ZACETEK_URA, n.KONEC_URA, COALESCE(n.FAKTURIRANA, 0),
+                   COALESCE(d.KAJ_OBRACUNAM, -1), COALESCE(d.MINUTE_KI_SE_NE_OBRACUNAJO, 0), h.MINUTE_HELPDESK
+            FROM FA_DN_NALOG n
+            LEFT JOIN OBRACUN_DN d ON n.STEVILKA = d.STEVILKA AND n.LETO = d.LETO
+            LEFT JOIN (
+                SELECT STEVILKA, LETO, SUM(COALESCE(KOLICINA, 0)) AS MINUTE_HELPDESK
+                FROM FA_DN_NALOG_KNJ
+                WHERE TRIM(SIFRA) = '047512'
+                GROUP BY STEVILKA, LETO
+            ) h ON n.STEVILKA = h.STEVILKA AND n.LETO = h.LETO
+            WHERE n.PARTNER = @Partner
+              AND n.ZACETEK_DATUM >= @DatumOd AND n.ZACETEK_DATUM < @DatumDoEks
+              AND (n.ZACETEK_DATUM < @DoDatuma OR (n.ZACETEK_DATUM = @DoDatuma AND n.STEVILKA < @DoStevilka))", connection))
+        {
+            cmd.Parameters.AddWithValue("@Partner", partner);
+            cmd.Parameters.AddWithValue("@DatumOd", datumOd);
+            cmd.Parameters.AddWithValue("@DatumDoEks", datumDoEks);
+            cmd.Parameters.AddWithValue("@DoDatuma", doDatuma.Date);
+            cmd.Parameters.AddWithValue("@DoStevilka", doStevilka.Trim());
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                nalogi.Add((
+                    reader.GetString(0).Trim(),
+                    reader.GetInt32(1),
+                    reader.GetDateTime(2),
+                    reader.IsDBNull(3) ? DateTime.MinValue : reader.GetDateTime(3),
+                    reader.IsDBNull(4) ? DateTime.MinValue : reader.GetDateTime(4),
+                    reader.GetInt32(5),
+                    (KajObracunam)reader.GetInt32(6),
+                    reader.GetInt32(7),
+                    reader.IsDBNull(8) ? null : (int?)Convert.ToInt32(reader.GetDecimal(8))
+                ));
+            }
+        }
+
+        var skupaj = 0;
+        foreach (var nalog in nalogi.OrderBy(n => n.Datum).ThenBy(n => n.Stevilka, StringComparer.Ordinal))
+        {
+            if (nalog.Fakturirana == 1)
+                continue;
+            if (nalog.Kaj != KajObracunam.KmMin && nalog.Kaj != KajObracunam.Min && nalog.Kaj != KajObracunam.ObveznoZaracunaj)
+                continue;
+
+            var trajanje = (nalog.Stevilka.Length == 7 && nalog.Stevilka.StartsWith("1") && nalog.HelpdeskMinute.HasValue)
+                ? nalog.HelpdeskMinute.Value
+                : (int)(nalog.Konec - nalog.Zacetek).TotalMinutes;
+            if (trajanje < 0) trajanje += 1440;
+
+            skupaj += Math.Max(0, trajanje - nalog.MinuteNeObracunaj);
+        }
+
+        return skupaj;
     }
 
     /// <summary>
@@ -1735,6 +1808,48 @@ public class ObracunService
         await ZapisiRevizijo(connection, TrenutniUporabnik,
             "FA_DN_NALOG", "SIF29",
             polovicna ? "0" : "1", polovicna ? "1" : "0",
+            $"Nalog {stevilka}/{leto}", stevilka, leto);
+    }
+
+    /// <summary>
+    /// Shrani minute, ki se pri nalogu ne obračunajo, v OBRACUN_DN.
+    /// </summary>
+    public async Task SaveMinuteKiSeNeObracunajoAsync(string stevilka, int leto, int staraVrednost, int novaVrednost, int trajanjeNaloga)
+    {
+        if (novaVrednost < 0)
+            throw new InvalidOperationException("Minute ne smejo biti manjše od 0.");
+        if (novaVrednost > trajanjeNaloga)
+            throw new InvalidOperationException($"Minute, ki se ne obračunajo ({novaVrednost}), ne smejo biti večje od trajanja naloga ({trajanjeNaloga}).");
+
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        await using (var cmd = new FbCommand(@"
+            UPDATE OBRACUN_DN
+            SET MINUTE_KI_SE_NE_OBRACUNAJO = @Minute
+            WHERE STEVILKA = @Stevilka AND LETO = @Leto", connection))
+        {
+            cmd.Parameters.AddWithValue("@Stevilka", stevilka);
+            cmd.Parameters.AddWithValue("@Leto", leto);
+            cmd.Parameters.AddWithValue("@Minute", novaVrednost);
+
+            var affected = await cmd.ExecuteNonQueryAsync();
+            if (affected == 0)
+            {
+                await using var insert = new FbCommand(@"
+                    INSERT INTO OBRACUN_DN (STEVILKA, LETO, KAJ_OBRACUNAM, MINUTE_KI_SE_NE_OBRACUNAJO)
+                    VALUES (@Stevilka, @Leto, @Kaj, @Minute)", connection);
+                insert.Parameters.AddWithValue("@Stevilka", stevilka);
+                insert.Parameters.AddWithValue("@Leto", leto);
+                insert.Parameters.AddWithValue("@Kaj", (int)KajObracunam.Nedefinirano);
+                insert.Parameters.AddWithValue("@Minute", novaVrednost);
+                await insert.ExecuteNonQueryAsync();
+            }
+        }
+
+        await ZapisiRevizijo(connection, TrenutniUporabnik,
+            "OBRACUN_DN", "MINUTE_KI_SE_NE_OBRACUNAJO",
+            staraVrednost.ToString(), novaVrednost.ToString(),
             $"Nalog {stevilka}/{leto}", stevilka, leto);
     }
 
