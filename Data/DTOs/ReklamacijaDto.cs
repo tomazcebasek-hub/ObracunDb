@@ -3,6 +3,13 @@ namespace ObracunDb.Data.DTOs;
 public class ReklamacijaGridDto
 {
     public int Id { get; set; }
+    public ObracunDb.Data.Entities.TipReklamacije TipReklamacije { get; set; }
+    public string TipReklamacijeNaziv => TipReklamacije switch
+    {
+        ObracunDb.Data.Entities.TipReklamacije.PrekinitevPogodbe => "Prekinitev pogodbe",
+        ObracunDb.Data.Entities.TipReklamacije.Reklamacija => "Reklamacija",
+        _ => TipReklamacije.ToString()
+    };
     public int Partner { get; set; }
     public string NazivPartnerja { get; set; } = string.Empty;
     public string PartnerDisplay => $"{Partner} - {NazivPartnerja}";
@@ -11,18 +18,40 @@ public class ReklamacijaGridDto
     public string? Kontakt { get; set; }
     public string? TipPrekinitve { get; set; }
     public DateTime? RacuniDoDne { get; set; }
+    public string? Opis { get; set; }
     public string? KdoNajObdela { get; set; }
     public DateTime? DatumPosredovanja { get; set; }
+    public int SteviloVnosov { get; set; }
+    public int? ZadnjiStatusId { get; set; }
+    public string? ZadnjiStatusBarva { get; set; }
+}
+
+public class ReklamacijaPostavkaDto
+{
+    public DateTime Datum { get; set; }
+    public string Uporabnik { get; set; } = string.Empty;
+    public string? Komentar { get; set; }
+    public string? StatusNaziv { get; set; }
+}
+
+public class ReklamacijaStatusSifrantDto
+{
+    public int Id { get; set; }
+    public string Naziv { get; set; } = string.Empty;
+    public string Barva { get; set; } = "#F5F5F5";
 }
 
 public class ReklamacijaFormDto
 {
+    public ObracunDb.Data.Entities.TipReklamacije TipReklamacije { get; set; } = ObracunDb.Data.Entities.TipReklamacije.PrekinitevPogodbe;
     public int Partner { get; set; }
     public string? Kontakt { get; set; }
     public string? TipPrekinitve { get; set; }
     public DateTime? RacuniDoDne { get; set; }
+    public string? Opis { get; set; }
     public string? Komentar { get; set; }
     public string? KdoNajObdela { get; set; }
+    public int? StatusId { get; set; }
     public List<PogodbaZaReklamacijoDto> Pogodbe { get; set; } = new();
 }
 

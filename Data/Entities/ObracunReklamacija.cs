@@ -5,8 +5,7 @@ namespace ObracunDb.Data.Entities;
 public enum TipReklamacije
 {
     PrekinitevPogodbe = 1,
-    ZacasnaPrekinitev = 2,
-    Reklamacija = 3
+    Reklamacija = 2
 }
 
 [Table("OBRACUN_REKLAMACIJA")]
@@ -35,4 +34,7 @@ public class ObracunReklamacija
 
     [Column("RACUNI_DO_DNE")]
     public DateTime? RacuniDoDne { get; set; }
+
+    [Column("OPIS")]
+    public string? Opis { get; set; }
 }

@@ -34,7 +34,10 @@ public static class MigrationManager
         { 115, ApplyV115 },
         { 116, ApplyV116 },
         { 117, ApplyV117 },
-        { 118, ApplyV118 }
+        { 118, ApplyV118 },
+        { 119, ApplyV119 },
+        { 120, ApplyV120 },
+        { 121, ApplyV121 }
     };
 
     /// <summary>
@@ -157,6 +160,9 @@ public static class MigrationManager
         116 => "OBRACUN_REKLAMACIJA: novi tabeli za reklamacije",
         117 => "OBRACUN_PRILOGA: priponke reklamacij",
         118 => "OBRACUN_MENU_DOVOLJENJE: vidnost menijev po uporabniku",
+        119 => "OBRACUN_REKLAMACIJA_SIFRANT: šifrant statusov reklamacij",
+        120 => "OBRACUN_REKLAMACIJA_POS: dodan STATUS_ID",
+        121 => "OBRACUN_REKLAMACIJA: dodan OPIS",
         _ => $"Migracija na verzijo {version}"
     };
 
@@ -634,5 +640,45 @@ public static class MigrationManager
             WHERE UPPER(UPORABNISKO_IME) IN ('JANKOKUHAR', 'ADMIN', 'KATJA')", status);
 
         return $"Zasejanih dovoljenj 'uporabniki': {affected}";
+    }
+
+    /// <summary>
+    /// Verzija 119: Šifrant statusov reklamacij.
+    /// </summary>
+    private static string? ApplyV119(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, @"CREATE TABLE OBRACUN_REKLAMACIJA_SIFRANT (
+            ID       INTEGER NOT NULL PRIMARY KEY,
+            NAZIV    VARCHAR(100) NOT NULL,
+            BARVA    VARCHAR(20) NOT NULL
+        )", status);
+        ExecuteSql(conn, "CREATE GENERATOR GEN_OBR_REKLAMACIJA_SIFRANT_ID", status);
+        ExecuteSql(conn, @"CREATE TRIGGER TRG_OBR_REKLAMACIJA_SIFRANT FOR OBRACUN_REKLAMACIJA_SIFRANT
+            ACTIVE BEFORE INSERT POSITION 0
+            AS BEGIN
+                IF (NEW.ID IS NULL OR NEW.ID = 0) THEN
+                    NEW.ID = GEN_ID(GEN_OBR_REKLAMACIJA_SIFRANT_ID, 1);
+            END", status);
+        ExecuteSql(conn, @"ALTER TABLE OBRACUN_REKLAMACIJA_SIFRANT
+            ADD CONSTRAINT UQ_OBR_REKLAMACIJA_SIFRANT_NAZIV UNIQUE (NAZIV)", status);
+        return null;
+    }
+
+    private static string? ApplyV120(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_REKLAMACIJA_POS ADD STATUS_ID INTEGER", status);
+        ExecuteSql(conn, @"ALTER TABLE OBRACUN_REKLAMACIJA_POS
+            ADD CONSTRAINT FK_OBR_REKL_POS_STATUS
+            FOREIGN KEY (STATUS_ID) REFERENCES OBRACUN_REKLAMACIJA_SIFRANT (ID)", status);
+        return null;
+    }
+
+    /// <summary>
+    /// Verzija 121: Dodan stolpec OPIS v OBRACUN_REKLAMACIJA.
+    /// </summary>
+    private static string? ApplyV121(FbConnection conn, MigrationStatus? status)
+    {
+        ExecuteSql(conn, "ALTER TABLE OBRACUN_REKLAMACIJA ADD OPIS BLOB SUB_TYPE TEXT", status);
+        return null;
     }
 }
