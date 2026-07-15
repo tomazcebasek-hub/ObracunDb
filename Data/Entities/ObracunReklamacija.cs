@@ -5,7 +5,8 @@ namespace ObracunDb.Data.Entities;
 public enum TipReklamacije
 {
     PrekinitevPogodbe = 1,
-    Reklamacija = 2
+    Reklamacija = 2,
+    NedokoncanProjekt = 3
 }
 
 [Table("OBRACUN_REKLAMACIJA")]

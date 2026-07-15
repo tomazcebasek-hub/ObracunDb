@@ -9,7 +9,7 @@
 
 <PageTitle>Reklamacije</PageTitle>
 <SectionContent SectionName="PageHeaderExtra">
-    <div style="display:grid; grid-template-columns:auto auto auto 220px auto 200px; column-gap:8px; align-items:center; margin-left:1rem; white-space:nowrap;">
+    <div style="display:flex; column-gap:8px; align-items:center; margin-left:1rem; white-space:nowrap; flex-wrap:wrap;">
         <DxButton Text="Prikaži tudi rešene"
                   Click="@TogglePrikaziResene"
                   RenderStyle="@(filterPrikaziResene ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)"
@@ -27,14 +27,17 @@
                     SizeMode="SizeMode.Small"
                     FilteringMode="DataGridFilteringMode.Contains" />
         <label style="white-space:nowrap; margin-bottom:0;">Tip:</label>
-        <DxComboBox Data="@tipiFilterOptions"
-                    @bind-Value="@filterTip"
-                    TextFieldName="Naziv"
-                    ValueFieldName="Tip"
-                    NullText="Vsi"
-                    ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
-                    Style="width:200px; min-width:200px; max-width:200px;"
-                    SizeMode="SizeMode.Small" />
+        <DxButton Text="Vsi"
+                  Click="@(() => filterTip = null)"
+                  RenderStyle="@(filterTip == null ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)"
+                  SizeMode="SizeMode.Small" />
+        @foreach (var tip in Enum.GetValues<TipReklamacije>())
+        {
+            <DxButton Text="@TipNaziv(tip)"
+                      Click="@(() => filterTip = tip)"
+                      RenderStyle="@(filterTip == tip ? ButtonRenderStyle.Primary : ButtonRenderStyle.Secondary)"
+                      SizeMode="SizeMode.Small" />
+        }
     </div>
 </SectionContent>
 
@@ -520,19 +523,9 @@ else
     {
         TipReklamacije.PrekinitevPogodbe => "Prekinitev pogodbe",
         TipReklamacije.Reklamacija => "Reklamacija",
+        TipReklamacije.NedokoncanProjekt => "Nedokončan projekt",
         _ => tip.ToString()
     };
-
-    static readonly List<TipFilterOption> tipiFilterOptions =
-        Enum.GetValues<TipReklamacije>()
-            .Select(t => new TipFilterOption { Tip = t, Naziv = TipNaziv(t) })
-            .ToList();
-
-    class TipFilterOption
-    {
-        public TipReklamacije Tip { get; set; }
-        public string Naziv { get; set; } = string.Empty;
-    }
 
     List<string> kdoNajObdelaFilterOptions => uporabniki
         .Where(u => u.Aktiven)
@@ -963,7 +956,7 @@ else
             Kontakt = editKontakt,
             TipPrekinitve = editTipReklamacije == TipReklamacije.PrekinitevPogodbe ? editTipPrekinitve : null,
             RacuniDoDne = editTipReklamacije == TipReklamacije.PrekinitevPogodbe ? editRacuniDoDne : null,
-            Opis = editTipReklamacije == TipReklamacije.Reklamacija ? editOpis : null,
+            Opis = editTipReklamacije != TipReklamacije.PrekinitevPogodbe ? editOpis : null,
             Komentar = editKomentar,
             KdoNajObdela = editKdoNajObdela,
             StatusId = editStatusId,

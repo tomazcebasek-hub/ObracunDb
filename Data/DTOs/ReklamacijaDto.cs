@@ -8,6 +8,7 @@ public class ReklamacijaGridDto
     {
         ObracunDb.Data.Entities.TipReklamacije.PrekinitevPogodbe => "Prekinitev pogodbe",
         ObracunDb.Data.Entities.TipReklamacije.Reklamacija => "Reklamacija",
+        ObracunDb.Data.Entities.TipReklamacije.NedokoncanProjekt => "Nedokončan projekt",
         _ => TipReklamacije.ToString()
     };
     public int Partner { get; set; }
