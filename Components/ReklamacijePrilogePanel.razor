@@ -1,6 +1,9 @@
 @using ObracunDb.Data.DTOs
+@using ObracunDb.Data.Entities
 @using ObracunDb.Services
 @inject ReklamacijeService ReklamacijeService
+@inject FawService FawService
+@inject ParametriService Parametri
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -24,6 +27,11 @@
                 <div class="text-danger mb-2" style="font-size:0.85rem;">@errorMessage</div>
             }
 
+            @if (!string.IsNullOrEmpty(pasteInstruction))
+            {
+                <div class="text-muted mb-2" style="font-size:0.85rem;">@pasteInstruction</div>
+            }
+
             @if (loading)
             {
                 <p class="text-muted">Nalagam...</p>
@@ -37,7 +45,14 @@
                 @foreach (var priloga in SavedPriloge)
                 {
                     <div class="mb-2 p-2" style="@GetSavedPrilogaStyle(priloga.Id)" @onclick="@(() => SelectSavedPriloga(priloga.Id))">
-                        <div style="font-weight:600; word-break:break-word;">@priloga.ImeDatoteke</div>
+                        <div style="display:flex; gap:6px; align-items:flex-start;">
+                            @if (ShowFawSelection)
+                            {
+                                <DxCheckBox @bind-Checked="@priloga.IzbranaZaFaw" />
+                            }
+                            <div style="flex:1; min-width:0; font-weight:600; word-break:break-word;">@priloga.ImeDatoteke</div>
+                            <span class="action-btn-danger" @onclick:stopPropagation="true" @onclick="@(() => ShowDeletePrilogaConfirm(priloga))" title="Izbriši priponko">×</span>
+                        </div>
                         <div class="text-muted" style="font-size:0.8rem;">@priloga.VelikostText</div>
                         <div class="text-muted" style="font-size:0.8rem;">@priloga.Datum.ToString("dd.MM.yyyy HH:mm")</div>
                     </div>
@@ -52,6 +67,15 @@
                         <div class="text-muted" style="font-size:0.8rem;">@FormatVelikost(priloga.Velikost)</div>
                     </div>
                 }
+            }
+            @if (ShowFawSelection)
+            {
+                <div style="padding-top:8px;">
+                    <DxButton Text="Prenos v FAW"
+                              Click="@PrenesiVfaw"
+                              RenderStyle="ButtonRenderStyle.Primary"
+                              Enabled="@SavedPriloge.Any(p => p.IzbranaZaFaw)" />
+                </div>
             }
         </div>
         <div style="flex:1; min-width:0; height:100%; overflow:hidden;">
@@ -80,12 +104,42 @@
     </div>
 </div>
 
+<DxPopup @bind-Visible="@showDeletePrilogaConfirm"
+         HeaderText="Potrditev brisanja priponke"
+         Width="430px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <p>Ali želite izbrisati priponko <strong>@deletePrilogaName</strong>?</p>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Izbriši" Click="@DeletePriloga" RenderStyle="ButtonRenderStyle.Danger" />
+        <DxButton Text="Prekliči" Click="@(() => showDeletePrilogaConfirm = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@showFawLogDialog"
+         HeaderText="Prenos priponk v FAW"
+         Width="900px"
+         Height="650px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <div style="height:100%; overflow:auto; border:1px solid #ddd; padding:10px; font-family:Consolas, monospace; font-size:0.85rem; white-space:pre-wrap;">@string.Join(Environment.NewLine, fawLog)</div>
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        <DxButton Text="Zapri" Click="@(() => showFawLogDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
 @code {
     const long MaxAttachmentSize = 10 * 1024 * 1024;
 
     [Parameter] public int? IdReklamacija { get; set; }
     [Parameter] public List<ReklamacijaPrilogaVnosDto> PendingPriloge { get; set; } = new();
+    [Parameter] public List<PogodbaZaReklamacijoDto> PogodbeZaFaw { get; set; } = new();
     [Parameter] public bool AllowAdd { get; set; } = true;
+    [Parameter] public bool ShowFawSelection { get; set; }
     [Parameter] public string Height { get; set; } = "520px";
 
     ElementReference pasteArea;
@@ -97,7 +151,13 @@
     int? selectedPendingPrilogaIndex;
     bool loading;
     string? errorMessage;
+    string? pasteInstruction;
     int? loadedIdReklamacija;
+    bool showDeletePrilogaConfirm;
+    int? deletePrilogaId;
+    string deletePrilogaName = string.Empty;
+    bool showFawLogDialog;
+    List<string> fawLog = new();
 
     protected override void OnInitialized()
     {
@@ -178,6 +238,7 @@
     async Task PasteFromClipboard()
     {
         errorMessage = null;
+        pasteInstruction = null;
         if (dotNetReference == null)
         {
             errorMessage = "Odložišče še ni pripravljeno. Poskusi znova.";
@@ -187,7 +248,12 @@
         try
         {
             var message = await JS.InvokeAsync<string?>("reklamacijePriloge.readImageFromClipboard", dotNetReference);
-            if (!string.IsNullOrWhiteSpace(message))
+            if (message == "clipboard-read-not-supported")
+            {
+                await JS.InvokeVoidAsync("reklamacijePriloge.focusPasteArea", pasteArea);
+                pasteInstruction = "Pritisni Ctrl+V, da prilepiš sliko iz odložišča.";
+            }
+            else if (!string.IsNullOrWhiteSpace(message))
                 errorMessage = message;
         }
         catch (Exception ex)
@@ -204,6 +270,7 @@
     public async Task OnPasteImagePreparedAsync(string id, string fileName, string contentType, long size)
     {
         errorMessage = null;
+        pasteInstruction = null;
         await InvokeAsync(StateHasChanged);
 
         try
@@ -289,6 +356,118 @@
         {
             PendingPriloge.Add(priloga);
             SelectPendingPriloga(PendingPriloge.Count - 1);
+        }
+    }
+
+    void ShowDeletePrilogaConfirm(ReklamacijaPrilogaDto priloga)
+    {
+        deletePrilogaId = priloga.Id;
+        deletePrilogaName = priloga.ImeDatoteke;
+        errorMessage = null;
+        showDeletePrilogaConfirm = true;
+    }
+
+    async Task DeletePriloga()
+    {
+        if (!deletePrilogaId.HasValue)
+            return;
+
+        try
+        {
+            await ReklamacijeService.DeletePrilogaAsync(deletePrilogaId.Value);
+            if (selectedSavedPrilogaId == deletePrilogaId)
+            {
+                selectedPriloga = null;
+                selectedSavedPrilogaId = null;
+            }
+
+            showDeletePrilogaConfirm = false;
+            deletePrilogaId = null;
+            await LoadSavedPriloge();
+        }
+        catch (Exception ex)
+        {
+            showDeletePrilogaConfirm = false;
+            errorMessage = $"Brisanje priponke ni uspelo: {ex.Message}";
+        }
+    }
+
+    async Task PrenesiVfaw()
+    {
+        var izbranePriloge = SavedPriloge.Where(p => p.IzbranaZaFaw).ToList();
+        if (izbranePriloge.Count == 0)
+            return;
+
+        fawLog.Clear();
+        showFawLogDialog = true;
+        fawLog.Add($"Izbranih priponk: {izbranePriloge.Count}");
+
+        var apiUrl = Parametri.GetString(ObracunParam.VascoApiUrl);
+        var uporabnik = Parametri.GetString(ObracunParam.VascoApiUporabnik);
+        var geslo = Parametri.GetString(ObracunParam.VascoApiGeslo);
+        var davcna = Parametri.GetString(ObracunParam.VascoApiDavcna);
+
+        if (string.IsNullOrWhiteSpace(apiUrl) || string.IsNullOrWhiteSpace(uporabnik) ||
+            string.IsNullOrWhiteSpace(geslo) || string.IsNullOrWhiteSpace(davcna))
+        {
+            fawLog.Add("Prenos ni mogoč, ker FAW nastavitve niso popolne.");
+            return;
+        }
+
+        fawLog.Add("Povezujem se s FAW...");
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };
+            var (uspehAvtentikacije, token, sporociloAvtentikacije) = await FawService.Avtenticiraj(httpClient, apiUrl, uporabnik, geslo, davcna);
+            if (!uspehAvtentikacije || string.IsNullOrWhiteSpace(token))
+            {
+                fawLog.Add("Prijava v FAW ni uspela.");
+                return;
+            }
+
+            fawLog.Add("Povezava s FAW je uspešna.");
+
+            for (var i = 0; i < izbranePriloge.Count; i++)
+            {
+                var priloga = izbranePriloge[i];
+                fawLog.Add($"[{i + 1}/{izbranePriloge.Count}] Prenašam priponko: {priloga.ImeDatoteke}");
+                await InvokeAsync(StateHasChanged);
+
+                var vsebina = await ReklamacijeService.GetPrilogaVsebinaAsync(priloga.Id);
+                if (vsebina == null)
+                {
+                    fawLog.Add("Rezultat: napaka - vsebine priponke ni mogoče prebrati iz baze.");
+                    continue;
+                }
+
+                var (uspeh, idDokumenta, _) = await FawService.ZapisiDokumentAsync(httpClient, apiUrl, token, vsebina.ImeDatoteke, vsebina.Vsebina);
+                if (!uspeh || !idDokumenta.HasValue)
+                {
+                    fawLog.Add("Priponke ni bilo mogoče zapisati v FAW.");
+                    continue;
+                }
+
+                if (PogodbeZaFaw.Count == 0)
+                {
+                    fawLog.Add("Priponka je zapisana, vendar je ni mogoče povezati s pogodbo.");
+                    continue;
+                }
+
+                foreach (var pogodba in PogodbeZaFaw)
+                {
+                    var (uspehPovezave, _) = await FawService.PoveziDokumentAsync(
+                        httpClient, apiUrl, token, idDokumenta.Value, pogodba.Stevilka, pogodba.Leto);
+                    fawLog.Add(uspehPovezave
+                        ? $"Priponka je povezana s pogodbo {pogodba.Stevilka}/{pogodba.Leto}."
+                        : $"Priponke ni bilo mogoče povezati s pogodbo {pogodba.Stevilka}/{pogodba.Leto}.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            fawLog.Add("Pri prenosu v FAW je prišlo do napake.");
         }
     }
 

@@ -1,6 +1,6 @@
 ﻿================================================================================
-IZRAČUN OBRAČUNA — Partner: 870050, Mesec: 6, Leto: 2026
-Datum izračuna: 01.07.2026 14:43:10
+IZRAČUN OBRAČUNA — Partner: 339100, Mesec: 7, Leto: 2026
+Datum izračuna: 06.08.2026 12:45:52
 ================================================================================
 
 ═══════════════════════════════════════════════════════════════════════════════
@@ -8,44 +8,48 @@ PODROBNOSTI OBDELAVE
 ═══════════════════════════════════════════════════════════════════════════════
 
 --- Predračuni ---
-Predračun 0000891/2026, datum: 23.04.2026, minut: 60, Že porabljeno: 60, preostalo: 0
+Predračun 0001534/2026, datum: 02.07.2026, minut: 60, preostalo: 60
+   - 046038-010   GIS priprava in instal.do PAKET  kol:     1  min:     60
+Predračun 0001603/2026, datum: 10.07.2026, minut: 300, preostalo: 300
+   - 046038-020   GIS instal.konfig.priprav PAKET  kol:     1  min:    300
+Predračun 0001614/2026, datum: 13.07.2026, minut: 60, preostalo: 60
    - 046040-002   Instalacija enostavnega m PAKET  kol:     1  min:     60
-Pogodba 4190/2022     , veljavnost od 01.09.2023:31.12.2050, minut 115
-   - 050006       VZDRŽEVALNA POGODBA MESEČNA SW GIS       MESEC         1,0    115,00   0,0     115,00
-   - 042188       GIS Modul eRačun preko UJP najem Mesečni MESPE         1,0      8,00   0,0       8,00
-   - 042163       GIS live podatki z blagajne POS Info Mes MESEC         1,0      5,00  40,0       3,00
-   - 042084-114   GIS pov.POSTerminal Lab4pay(brezpostavk) MESEC         1,0      8,00   0,0       8,00
-   - 042084-114   GIS pov.POSTerminal Lab4pay(brezpostavk) MESEC         1,0      8,00  30,0       5,60
+Predračun 0001718/2026, datum: 27.07.2026, minut: 60, preostalo: 60
+   - 046040-002   Instalacija enostavnega m PAKET  kol:     1  min:     60
+Pogodba 3198/2022     , veljavnost od 01.07.2026:31.12.2050, minut 100
+   - 050007       VZDRŽEVALNA POGODBA LETNA -SW            LETO          1,0    660,00   0,0     660,00
+   - 042163       GIS live podatki z blagajne POS Info Mes MESEC         1,0     72,00   0,0      72,00
+   - 042209-020   GIS Prestige mod.naročilo na ekran/kuhin MESEC         1,0    240,00   0,0     240,00
+   - 042209-060   GIS Prestige prevzem Wolt naročila Meseč MESBL         1,0    348,00   0,0     348,00
+   - 042209-060   GIS Prestige prevzem Wolt naročila Meseč MESBL         1,0    208,80   0,0     208,80
+   - 042209-061   GIS Prest.prevzem Wolt naročila-dod.tabl MESBL         1,0    136,80   0,0     136,80
+   - 042084-127   GIS Pove.POS terminal Payten Android NLB mesko         1,0     96,00   0,0      96,00
+   - 042084-127   GIS Pove.POS terminal Payten Android NLB mesko         1,0    144,00   0,0     144,00
 
-=== Nalogi: 9 ===
-Nalog 1005105/2026, 01.06.2026 08:14-08:16, trajanje: 2 min (Del 7-16: 2), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET         2,0      1,00   0,0       2,00
-Nalog 1005148/2026, 02.06.2026 14:40-14:52, trajanje: 12 min (Del 7-16: 12), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET        12,0      1,00   0,0      12,00
-Nalog 1005285/2026, 04.06.2026 18:25-18:34, trajanje: 9 min (Del 16-22: 9), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET         9,0      1,00   0,0       9,00
-Nalog 1005449/2026, 09.06.2026 14:15-14:29, trajanje: 14 min (Del 7-16: 14), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET        14,0      1,00   0,0      14,00
-Nalog 1005700/2026, 17.06.2026 13:22-13:42, trajanje: 20 min (Del 7-16: 20), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET        20,0      1,00   0,0      20,00
-Nalog 1005754/2026, 18.06.2026 10:06-10:09, trajanje: 3 min (Del 7-16: 3), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET         3,0      1,00   0,0       3,00
-Nalog 1005933/2026, 23.06.2026 16:00-17:00, trajanje: 60 min (Del 16-22: 60), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET        60,0      0,00   0,0       0,00
-Nalog 1005990/2026, 24.06.2026 14:35-14:36, trajanje: 1 min (Del 7-16: 1), Km + min
-   - 047512       Servisna ura-minute&&# To uporablja RADO PAKET         1,0      0,00   0,0       0,00
-Nalog 0000227/2026, 30.06.2026 09:00-14:18, trajanje: 318 min (Del 7-16: 318), Samo min, ne obr: 60 min
+=== Nalogi: 7 ===
+Nalog 1006302/2026, 02.07.2026 14:32-14:33, trajanje: 1 min (Del 7-16: 1), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET         1,0      0,00   0,0       0,00
+Nalog 1006508/2026, 10.07.2026 15:02-15:34, trajanje: 32 min (Del 7-16: 32), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET        32,0      0,00   0,0       0,00
+Nalog 1006751/2026, 16.07.2026 09:03-12:23, trajanje: 200 min (Del 7-16: 200), Km + min, ne obr: 100 min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET       200,0      0,00   0,0       0,00
+Nalog 1007008/2026, 23.07.2026 09:29-09:49, trajanje: 20 min (Del 7-16: 20), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET        20,0      0,00   0,0       0,00
+Nalog 1007051/2026, 24.07.2026 12:09-12:22, trajanje: 13 min (Del 7-16: 13), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET        13,0      0,00   0,0       0,00
+Nalog 1007040/2026, 24.07.2026 12:52-15:30, trajanje: 158 min (Del 7-16: 158), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET       158,0      0,00   0,0       0,00
+Nalog 1007165/2026, 29.07.2026 11:12-12:21, trajanje: 69 min (Del 7-16: 69), Km + min
+   - 047512       Servisna ura-minute&&#-ne tikaj To upora PAKET        69,0      0,00   0,0       0,00
 
---- Skupaj minute nalogov: 439 ---
-    Obračunane: 379 min, Neobračunane: 60 min
-    Del 7-16: 370, Del 16-22: 69
+--- Skupaj minute nalogov: 493 ---
+    Obračunane: 393 min, Neobračunane: 100 min
+    Del 7-16: 493
 
 --- Obračun servisnih storitev (pogodba, popust 30%) ---
-   - 046023       HD-oddaljena pomoč tehnik med 16-22 uro  Ura-m         0,3     62,00  30,0      10,85  (6 min = 0,25 ur (1 x 15 min))
-   - 046022-02    Teren servis, inter tehnik med 07-16 uro URA           5,0     59,00  30,0     206,50  (258 min = 5 ur)
 ------------------------------------
-=== MinuteVPlus: 115 (predračuni: 0, ročni: 0, pogodbe: 115, partner_minute: 0) ===
-=== MinuteKoriscene: 115 ===
+=== MinuteVPlus: 580 (predračuni: 480, ročni: 0, pogodbe: 100, partner_minute: 0) ===
+=== MinuteKoriscene: 393 ===
 ------------------------------------
 
 
@@ -53,38 +57,39 @@ Nalog 0000227/2026, 30.06.2026 09:00-14:18, trajanje: 318 min (Del 7-16: 318), S
 POVZETEK MINUT
 ═══════════════════════════════════════════════════════════════════════════════
 Ima pogodbo:              DA
-Letna pogodba:            NE
+Letna pogodba:            DA
 Ima naloge:               DA
 
 Dobroimetje (minute v plus):
-  Predračuni:                  0 min (skupno: 60, že porabljeno prej: 60)
+  Predračuni:                480 min (skupno: 480, že porabljeno prej: 0)
   Ročno vnešene:               0 min
-  Pogodbe:                   115 min
+  Pogodbe:                   100 min
   Partner minute:              0 min (skupno: 0, že porabljeno prej: 0)
   ─────────────────────────────
-  SKUPAJ dobroimetje:        115 min
+  SKUPAJ dobroimetje:        580 min
 
 Minute nalogov:
-  Razdelitev:             Del 7-16: 370, Del 16-22: 69
-  Obračunane (za zaračun):   264 min
-  Neobračunane:               60 min
-  Koriščene (iz dobro.):     115 min
+  Razdelitev:             Del 7-16: 493
+  Obračunane (za zaračun):     0 min
+  Neobračunane:              100 min
+  Koriščene (iz dobro.):     393 min
 
 ═══════════════════════════════════════════════════════════════════════════════
 KONČNE POSTAVKE RAČUNA (OBRACUN_OSNUTEK_POS)
 ═══════════════════════════════════════════════════════════════════════════════
     Zs Tip      Artikel      Naziv                                 Količina       Cena  Rabat     Vrednost  Nalog/Pogodba
   ---- -------- ------------ ----------------------------------- ---------- ---------- ------ ------------  --------------
-     1 POGODBA  050006       VZDRŽEVALNA POGODBA MESEČNA SW GIS        1,00     115,00    0,0       115,00  Pogodba 4190/2022
-     2 POGODBA  042188       GIS Modul eRačun preko UJP najem Me       1,00       8,00    0,0         8,00  Pogodba 4190/2022
-     3 POGODBA  042163       GIS live podatki z blagajne POS Inf       1,00       5,00   40,0         3,00  Pogodba 4190/2022
-     4 POGODBA  042084-114   GIS pov.POSTerminal Lab4pay(brezpos       1,00       8,00    0,0         8,00  Pogodba 4190/2022
-     5 POGODBA  042084-114   GIS pov.POSTerminal Lab4pay(brezpos       1,00       8,00   30,0         5,60  Pogodba 4190/2022
-     6 NALOG    046023       Servis (pog.) Delavnik 16-22              0,25      62,00   30,0        10,85  
-     7 NALOG    046022-02    Servis (pog.) Delavnik 7-16               5,00      59,00   30,0       206,50  
+     1 POGODBA  050007       VZDRŽEVALNA POGODBA LETNA -SW             1,00     660,00    0,0       660,00  Pogodba 3198/2022
+     2 POGODBA  042163       GIS live podatki z blagajne POS Inf       1,00      72,00    0,0        72,00  Pogodba 3198/2022
+     3 POGODBA  042209-020   GIS Prestige mod.naročilo na ekran/       1,00     240,00    0,0       240,00  Pogodba 3198/2022
+     4 POGODBA  042209-060   GIS Prestige prevzem Wolt naročila        1,00     348,00    0,0       348,00  Pogodba 3198/2022
+     5 POGODBA  042209-060   GIS Prestige prevzem Wolt naročila        1,00     208,80    0,0       208,80  Pogodba 3198/2022
+     6 POGODBA  042209-061   GIS Prest.prevzem Wolt naročila-dod       1,00     136,80    0,0       136,80  Pogodba 3198/2022
+     7 POGODBA  042084-127   GIS Pove.POS terminal Payten Androi       1,00      96,00    0,0        96,00  Pogodba 3198/2022
+     8 POGODBA  042084-127   GIS Pove.POS terminal Payten Androi       1,00     144,00    0,0       144,00  Pogodba 3198/2022
                                                                                               ============
-                             SKUPAJ VREDNOST:                                                       356,95
-  Število postavk: 7
+                             SKUPAJ VREDNOST:                                                     1.905,60
+  Število postavk: 8
 
 ================================================================================
 KONEC IZRAČUNA

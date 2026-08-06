@@ -239,6 +239,35 @@ public class FawService
         return cache;
     }
 
+    public List<string> NajdiManjkajoceArtikle(FawCache cache, IEnumerable<int> partnerji)
+    {
+        var sifre = partnerji
+            .Distinct()
+            .SelectMany(partner => cache.Postavke.TryGetValue(partner, out var postavke)
+                ? postavke
+                : Enumerable.Empty<ObracunOsnutekPos>())
+            .Select(p => p.Artikel?.Trim())
+            .Where(sifra => !string.IsNullOrWhiteSpace(sifra))
+            .Cast<string>()
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (sifre.Count == 0)
+            return new();
+
+        using var db = CreateDb();
+        var obstojeceSifre = db.FaArtikel
+            .Where(a => sifre.Contains(a.Sifra))
+            .Select(a => a.Sifra)
+            .ToList()
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return sifre
+            .Where(sifra => !obstojeceSifre.Contains(sifra))
+            .OrderBy(sifra => sifra)
+            .ToList();
+    }
+
     public async Task<(bool Uspeh, string? Token, string Sporocilo)> Avtenticiraj(
         HttpClient httpClient, string apiUrl, string uporabnik, string geslo, string davcna)
     {
@@ -860,6 +889,116 @@ public class FawService
         catch { }
 
         return (true, racunStevilka, racunLeto, "OK");
+    }
+
+    public async Task<(bool Uspeh, int? IdDokumenta, string Sporocilo)> ZapisiDokumentAsync(
+        HttpClient httpClient, string apiUrl, string token, string nazivDatoteke, byte[] vsebina)
+    {
+        var baseUrl = apiUrl.TrimEnd('/');
+        if (baseUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
+            baseUrl = baseUrl[..^"/Avtentikacija".Length];
+
+        var dokumentUrl = baseUrl.Contains("/api/v1", StringComparison.OrdinalIgnoreCase)
+            ? $"{baseUrl}/Priloge/dokument"
+            : $"{baseUrl}/api/v1/Priloge/dokument";
+
+        var dokument = new
+        {
+            zaporedna = 1,
+            tmpFlag = string.Empty,
+            datumMape = string.Empty,
+            rZaporedje = true,
+            shranjen = true,
+            vezaMape = "FA",
+            sifraMape = 0,
+            dokumentVsebina = new[]
+            {
+                new
+                {
+                    stran = 0,
+                    nazivDatoteke,
+                    vsebina = Convert.ToBase64String(vsebina),
+                    izvornaDatoteka = string.Empty,
+                    externalId = string.Empty,
+                    crtknaKoda = string.Empty,
+                    eRacunTip = 0,
+                    eRacunSlog = 0
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(dokument);
+        var requestSummary = $"POST {dokumentUrl}{Environment.NewLine}Payload: vezaMape=FA, sifraMape=0, zaporedna=1, rZaporedje=true, shranjen=true, nazivDatoteke={nazivDatoteke}, vsebina=Base64 ({vsebina.Length} B).";
+
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await httpClient.PostAsync(dokumentUrl, content);
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var summary = $"{requestSummary}{Environment.NewLine}Odgovor: {(int)response.StatusCode} {response.ReasonPhrase}; {responseContent}";
+
+        if (!response.IsSuccessStatusCode)
+            return (false, null, summary);
+
+        int? idDokumenta = null;
+        try
+        {
+            var responseJson = JsonDocument.Parse(responseContent);
+            foreach (var propertyName in new[] { "id", "Id", "iD_DOK", "idDok" })
+            {
+                if (responseJson.RootElement.TryGetProperty(propertyName, out var property) && property.TryGetInt32(out var id))
+                {
+                    idDokumenta = id;
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        return idDokumenta.HasValue
+            ? (true, idDokumenta, $"{summary}{Environment.NewLine}ID dokumenta: {idDokumenta.Value}")
+            : (false, null, $"{summary}{Environment.NewLine}Napaka: ID dokumenta ni bil najden v odgovoru API-ja.");
+    }
+
+    public async Task<(bool Uspeh, string Sporocilo)> PoveziDokumentAsync(
+        HttpClient httpClient, string apiUrl, string token, int idDokumenta, int stevilka, int leto)
+    {
+        var baseUrl = apiUrl.TrimEnd('/');
+        if (baseUrl.EndsWith("/Avtentikacija", StringComparison.OrdinalIgnoreCase))
+            baseUrl = baseUrl[..^"/Avtentikacija".Length];
+
+        var povezavaUrl = baseUrl.Contains("/api/v1", StringComparison.OrdinalIgnoreCase)
+            ? $"{baseUrl}/Priloge/dokument/link"
+            : $"{baseUrl}/api/v1/Priloge/dokument/link";
+
+        var povezava = new
+        {
+            iD_DOK = idDokumenta,
+            program = "FA",
+            tip = 55,
+            stevilka,
+            stevilka2 = 0,
+            cStevilka = string.Empty,
+            leto,
+            mesec = 0,
+            crtknaKoda = string.Empty,
+            opis = string.Empty,
+            datum = string.Empty,
+            progMapa = 55,
+            partner = 0,
+            sm1 = 0,
+            sm2 = 0,
+            sm3 = 0
+        };
+
+        var json = JsonSerializer.Serialize(povezava, new JsonSerializerOptions { WriteIndented = true });
+        var requestSummary = $"HTTP metoda: POST{Environment.NewLine}URL: {povezavaUrl}{Environment.NewLine}Pogodba: številka={stevilka}, leto={leto}{Environment.NewLine}JSON telo:{Environment.NewLine}{json}";
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var response = await httpClient.PostAsync(povezavaUrl, content);
+        var responseContent = await response.Content.ReadAsStringAsync();
+
+        return (response.IsSuccessStatusCode,
+            $"{requestSummary}{Environment.NewLine}Odgovor: {(int)response.StatusCode} {response.ReasonPhrase}; {responseContent}");
     }
 
     public List<(string Sifra, string Naziv)> NaloziKomercialiste()

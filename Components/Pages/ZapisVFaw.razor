@@ -274,6 +274,17 @@
             var cache = FawService.NaloziCache(_mesec, _leto);
             dnevnik.Add("Podatki naloženi v spomin.");
 
+            var manjkajociArtikli = FawService.NajdiManjkajoceArtikle(cache, partnerji.Take(stZaPreos));
+            if (manjkajociArtikli.Count > 0)
+            {
+                rezultatSporocilo = $"Prenos ni izveden. V FA_ARTIKEL manjkajo artikli: {string.Join(", ", manjkajociArtikli)}.";
+                rezultatUspeh = false;
+                dnevnik.Add(rezultatSporocilo);
+                return;
+            }
+
+            dnevnik.Add("Preverjanje artiklov je uspešno.");
+
             using var db = FawService.CreateSharedDb();
             int uspesnih = 0;
 

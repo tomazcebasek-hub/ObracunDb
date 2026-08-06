@@ -53,7 +53,12 @@ public class ReklamacijeService
                  WHERE rp.ID_REKLAMACIJA = r.ID
                  ORDER BY rp.DATUM DESC, rp.ID DESC) AS ZADNJI_STATUS_BARVA,
                 r.TIP_REKLAMACIJE,
-                r.OPIS
+                r.OPIS,
+                (SELECT FIRST 1 s.NAZIV
+                 FROM OBRACUN_REKLAMACIJA_POS rp
+                 LEFT JOIN OBRACUN_REKLAMACIJA_SIFRANT s ON s.ID = rp.STATUS_ID
+                 WHERE rp.ID_REKLAMACIJA = r.ID
+                 ORDER BY rp.DATUM DESC, rp.ID DESC) AS ZADNJI_STATUS_NAZIV
             FROM OBRACUN_REKLAMACIJA r
             LEFT JOIN PARTNER p ON r.PARTNER = p.SIFRA
             LEFT JOIN (
@@ -82,7 +87,8 @@ public class ReklamacijeService
                 ZadnjiStatusId = reader.IsDBNull(11) ? null : reader.GetInt32(11),
                 ZadnjiStatusBarva = reader.IsDBNull(12) ? null : reader.GetString(12).Trim(),
                 TipReklamacije = (ObracunDb.Data.Entities.TipReklamacije)reader.GetInt32(13),
-                Opis = reader.IsDBNull(14) ? null : reader.GetString(14).Trim()
+                Opis = reader.IsDBNull(14) ? null : reader.GetString(14).Trim(),
+                ZadnjiStatusNaziv = reader.IsDBNull(15) ? null : reader.GetString(15).Trim()
             });
         }
 
@@ -190,7 +196,12 @@ public class ReklamacijeService
                  WHERE rp.ID_REKLAMACIJA = r.ID
                  ORDER BY rp.DATUM DESC, rp.ID DESC) AS ZADNJI_STATUS_BARVA,
                 r.TIP_REKLAMACIJE,
-                r.OPIS
+                r.OPIS,
+                (SELECT FIRST 1 s.NAZIV
+                 FROM OBRACUN_REKLAMACIJA_POS rp
+                 LEFT JOIN OBRACUN_REKLAMACIJA_SIFRANT s ON s.ID = rp.STATUS_ID
+                 WHERE rp.ID_REKLAMACIJA = r.ID
+                 ORDER BY rp.DATUM DESC, rp.ID DESC) AS ZADNJI_STATUS_NAZIV
             FROM OBRACUN_REKLAMACIJA r
             LEFT JOIN PARTNER p ON r.PARTNER = p.SIFRA
             LEFT JOIN (
@@ -222,7 +233,8 @@ public class ReklamacijeService
             ZadnjiStatusId = reader.IsDBNull(11) ? null : reader.GetInt32(11),
             ZadnjiStatusBarva = reader.IsDBNull(12) ? null : reader.GetString(12).Trim(),
             TipReklamacije = (ObracunDb.Data.Entities.TipReklamacije)reader.GetInt32(13),
-            Opis = reader.IsDBNull(14) ? null : reader.GetString(14).Trim()
+            Opis = reader.IsDBNull(14) ? null : reader.GetString(14).Trim(),
+            ZadnjiStatusNaziv = reader.IsDBNull(15) ? null : reader.GetString(15).Trim()
         };
     }
 
@@ -234,7 +246,7 @@ public class ReklamacijeService
         await connection.OpenAsync();
 
         await using var command = new FbCommand(@"
-            SELECT rp.DATUM, rp.UPORABNIK, rp.OPIS, s.NAZIV
+            SELECT rp.ID, rp.DATUM, rp.UPORABNIK, rp.OPIS, s.NAZIV
             FROM OBRACUN_REKLAMACIJA_POS rp
             LEFT JOIN OBRACUN_REKLAMACIJA_SIFRANT s ON s.ID = rp.STATUS_ID
             WHERE ID_REKLAMACIJA = @IdReklamacija
@@ -247,14 +259,30 @@ public class ReklamacijeService
         {
             result.Add(new ReklamacijaPostavkaDto
             {
-                Datum = reader.GetDateTime(0),
-                Uporabnik = reader.IsDBNull(1) ? string.Empty : reader.GetString(1).Trim(),
-                Komentar = reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
-                StatusNaziv = reader.IsDBNull(3) ? null : reader.GetString(3).Trim()
+                Id = reader.GetInt32(0),
+                Datum = reader.GetDateTime(1),
+                Uporabnik = reader.IsDBNull(2) ? string.Empty : reader.GetString(2).Trim(),
+                Komentar = reader.IsDBNull(3) ? null : reader.GetString(3).Trim(),
+                StatusNaziv = reader.IsDBNull(4) ? null : reader.GetString(4).Trim()
             });
         }
 
         return result;
+    }
+
+    public async Task UpdatePostavkaKomentarAsync(int id, string? komentar)
+    {
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        await using var command = new FbCommand(@"
+            UPDATE OBRACUN_REKLAMACIJA_POS
+            SET OPIS = @Opis
+            WHERE ID = @Id", connection);
+
+        command.Parameters.AddWithValue("@Id", id);
+        command.Parameters.AddWithValue("@Opis", (object?)komentar ?? DBNull.Value);
+        await command.ExecuteNonQueryAsync();
     }
 
     public async Task<List<ReklamacijaStatusSifrantDto>> GetStatuseAsync()
@@ -385,6 +413,63 @@ public class ReklamacijeService
                 StPogodbe = reader.IsDBNull(2) ? null : reader.GetString(2).Trim(),
                 Znesek = reader.GetDecimal(3),
                 VeljaDo = reader.IsDBNull(4) ? null : reader.GetDateTime(4)
+            });
+        }
+
+        return result;
+    }
+
+    public async Task<List<PogodbaZaReklamacijoDto>> GetPogodbeZaPrilogeAsync(int idReklamacija)
+    {
+        await using var connection = _connectionManager.GetConnection();
+        await connection.OpenAsync();
+
+        int partner;
+        string? stevilkePogodb;
+        await using (var headerCommand = new FbCommand(@"
+            SELECT PARTNER, STEVILKE_POGODB
+            FROM OBRACUN_REKLAMACIJA
+            WHERE ID = @IdReklamacija", connection))
+        {
+            headerCommand.Parameters.AddWithValue("@IdReklamacija", idReklamacija);
+            await using var headerReader = await headerCommand.ExecuteReaderAsync();
+            if (!await headerReader.ReadAsync())
+                return new();
+
+            partner = headerReader.GetInt32(0);
+            stevilkePogodb = headerReader.IsDBNull(1) ? null : headerReader.GetString(1);
+        }
+
+        var izbraneStevilke = (stevilkePogodb ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (izbraneStevilke.Count == 0)
+            return new();
+
+        await using var command = new FbCommand(@"
+            SELECT STEVILKA, LETO, ST_POGODBE
+            FROM FA_POGODBE
+            WHERE PARTNER = @Partner
+            ORDER BY LETO, STEVILKA", connection);
+
+        command.Parameters.AddWithValue("@Partner", partner);
+
+        var result = new List<PogodbaZaReklamacijoDto>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var stevilka = reader.GetInt32(0);
+            var leto = reader.GetInt32(1);
+            var stPogodbe = reader.IsDBNull(2) ? null : reader.GetString(2).Trim();
+            var displayStevilka = string.IsNullOrWhiteSpace(stPogodbe) ? $"{stevilka}/{leto}" : stPogodbe;
+            if (!izbraneStevilke.Contains(displayStevilka) && !izbraneStevilke.Contains($"{stevilka}/{leto}"))
+                continue;
+
+            result.Add(new PogodbaZaReklamacijoDto
+            {
+                Stevilka = stevilka,
+                Leto = leto,
+                StPogodbe = stPogodbe
             });
         }
 

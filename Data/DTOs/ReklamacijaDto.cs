@@ -24,11 +24,13 @@ public class ReklamacijaGridDto
     public DateTime? DatumPosredovanja { get; set; }
     public int SteviloVnosov { get; set; }
     public int? ZadnjiStatusId { get; set; }
+    public string? ZadnjiStatusNaziv { get; set; }
     public string? ZadnjiStatusBarva { get; set; }
 }
 
 public class ReklamacijaPostavkaDto
 {
+    public int Id { get; set; }
     public DateTime Datum { get; set; }
     public string Uporabnik { get; set; } = string.Empty;
     public string? Komentar { get; set; }
@@ -79,6 +81,7 @@ public class ReklamacijaPrilogaDto
 {
     public int Id { get; set; }
     public int IdReklamacija { get; set; }
+    public bool IzbranaZaFaw { get; set; }
     public string ImeDatoteke { get; set; } = string.Empty;
     public string TipVsebine { get; set; } = string.Empty;
     public int Velikost { get; set; }

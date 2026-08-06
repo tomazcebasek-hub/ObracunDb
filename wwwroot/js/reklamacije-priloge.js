@@ -18,9 +18,15 @@ window.reklamacijePriloge = {
         window.reklamacijePriloge.preparedImages.delete(id);
     },
 
+    focusPasteArea: function (element) {
+        if (element && element.focus) {
+            element.focus();
+        }
+    },
+
     prepareImageFromClipboard: async function () {
         if (!navigator.clipboard || !navigator.clipboard.read) {
-            return { error: 'Brskalnik ne podpira branja slik iz odložišča. Uporabi nalaganje datoteke.' };
+            return { error: 'clipboard-read-not-supported' };
         }
 
         if (!window.isSecureContext) {

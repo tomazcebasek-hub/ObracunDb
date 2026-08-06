@@ -97,12 +97,29 @@ else
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.TipReklamacijeNaziv)" Caption="Tip" Width="150px" />
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.PartnerDisplay)" Caption="Partner" MinWidth="180" />
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.DatumZahteve)" Caption="Datum zahteve" DisplayFormat="dd.MM.yyyy" Width="130px" />
-                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.StevilkePogodb)" Caption="Številke pogodb" Width="170px" />
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.Kontakt)" Caption="Kontakt" Width="180px" />
-                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.TipPrekinitve)" Caption="Tip prekinitve" Width="170px" />
-                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.RacuniDoDne)" Caption="Računi do dne" DisplayFormat="dd.MM.yyyy" Width="130px" />
-                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.Opis)" Caption="Opis" Width="200px" />
+                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.Opis)" Caption="Opis" Width="670px">
+                        <CellDisplayTemplate Context="opisContext">
+                            @{
+                                var opis = ((ReklamacijaGridDto)opisContext.DataItem).Opis;
+                            }
+                            <div title="@opis" style="display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; overflow:hidden; white-space:normal;">
+                                @opis
+                            </div>
+                        </CellDisplayTemplate>
+                    </DxGridDataColumn>
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.KdoNajObdela)" Caption="Kdo naj obdela" Width="150px" />
+                    <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.ZadnjiStatusNaziv)" Caption="Status" Width="150px">
+                        <FilterRowCellTemplate Context="statusFilterContext">
+                            <DxComboBox Data="@statusFilterOptions"
+                                        Value="@(statusFilterContext.FilterRowValue as string)"
+                                        ValueChanged="@((string? value) => statusFilterContext.FilterRowValue = value)"
+                                        NullText="(vsi)"
+                                        FilteringMode="DataGridFilteringMode.Contains"
+                                        ClearButtonDisplayMode="DataEditorClearButtonDisplayMode.Auto"
+                                        CssClass="w-100" />
+                        </FilterRowCellTemplate>
+                    </DxGridDataColumn>
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.DatumPosredovanja)" Caption="Datum posredovanja" DisplayFormat="dd.MM.yyyy HH:mm" Width="160px" />
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaGridDto.SteviloVnosov)" Caption="Št. vnosov" Width="100px" />
                     <DxGridDataColumn Caption="Akcije" Width="200px" FixedPosition="GridColumnFixedPosition.Right">
@@ -131,7 +148,17 @@ else
                     else
                     {
                         <div><strong>Partner:</strong> @selectedReklamacija.PartnerDisplay</div>
-                        <div><strong>Računi do dne:</strong> @(selectedReklamacija.RacuniDoDne?.ToString("dd.MM.yyyy") ?? "")</div>
+                        <div><strong>Kontakt:</strong> @selectedReklamacija.Kontakt</div>
+                        @if (selectedReklamacija.TipReklamacije == TipReklamacije.PrekinitevPogodbe)
+                        {
+                            <div><strong>Številke pogodb:</strong> @selectedReklamacija.StevilkePogodb</div>
+                            <div><strong>Razlog prekinitve:</strong> @selectedReklamacija.TipPrekinitve</div>
+                            <div><strong>Računi do dne:</strong> @(selectedReklamacija.RacuniDoDne?.ToString("dd.MM.yyyy") ?? "")</div>
+                        }
+                        else
+                        {
+                            <div><strong>Opis:</strong> @selectedReklamacija.Opis</div>
+                        }
                     }
                 </div>
                 <div style="flex-shrink:0; padding-top:8px; min-height:38px; display:flex; align-items:flex-end; flex-wrap:wrap; gap:8px;">
@@ -158,6 +185,14 @@ else
                             <DxGridDataColumn FieldName="@nameof(ReklamacijaPostavkaDto.Datum)" Caption="Datum" DisplayFormat="dd.MM.yyyy HH:mm" Width="150px" />
                             <DxGridDataColumn FieldName="@nameof(ReklamacijaPostavkaDto.Uporabnik)" Caption="Uporabnik" Width="140px" />
                             <DxGridDataColumn FieldName="@nameof(ReklamacijaPostavkaDto.Komentar)" Caption="Komentar" />
+                            <DxGridDataColumn Caption="Akcije" Width="65px">
+                                <CellDisplayTemplate Context="postavkaContext">
+                                    @{
+                                        var postavka = (ReklamacijaPostavkaDto)postavkaContext.DataItem;
+                                    }
+                                    <span class="action-btn" @onclick="@(() => ShowEditPostavkaDialog(postavka))" title="Popravi komentar">✎</span>
+                                </CellDisplayTemplate>
+                            </DxGridDataColumn>
                         </Columns>
                     </DxGrid>
                 </div>
@@ -226,6 +261,8 @@ else
                                 </CellDisplayTemplate>
                             </DxGridDataColumn>
                             <DxGridDataColumn FieldName="@nameof(PogodbaZaReklamacijoDto.DisplayStevilka)" Caption="Številka" Width="150px" />
+                            <DxGridDataColumn FieldName="@nameof(PogodbaZaReklamacijoDto.Stevilka)" Caption="Številka FAW" Width="110px" />
+                            <DxGridDataColumn FieldName="@nameof(PogodbaZaReklamacijoDto.Leto)" Caption="Leto FAW" Width="90px" />
                             <DxGridDataColumn FieldName="@nameof(PogodbaZaReklamacijoDto.Znesek)" Caption="Znesek" DisplayFormat="N2" Width="120px" />
                             <DxGridDataColumn FieldName="@nameof(PogodbaZaReklamacijoDto.VeljaDo)" Caption="Velja do" DisplayFormat="dd.MM.yyyy" Width="130px" />
                         </Columns>
@@ -241,7 +278,7 @@ else
         {
             <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
                 <label style="min-width:150px; white-space:nowrap;">Razlog prekinitve</label>
-                <DxTextBox @bind-Text="@editTipPrekinitve" CssClass="w-100" />
+                <DxMemo @bind-Text="@editTipPrekinitve" Rows="10" CssClass="w-100" />
             </div>
             <div class="mb-3" style="display:flex; align-items:center; gap:12px;">
                 <label style="min-width:150px; white-space:nowrap;">Računi do datuma</label>
@@ -252,7 +289,7 @@ else
         {
             <div class="mb-3" style="display:flex; align-items:flex-start; gap:12px;">
                 <label style="min-width:150px; white-space:nowrap; padding-top:6px;">Opis</label>
-                <DxMemo @bind-Text="@editOpis" Rows="3" CssClass="w-100" />
+                <DxMemo @bind-Text="@editOpis" Rows="9" CssClass="w-100" style="height:400px;" />
             </div>
         }
         @if (!editingId.HasValue)
@@ -305,6 +342,24 @@ else
         <DxButton Text="Prekliči"
                   Click="@(() => { showDialog = false; dialogError = null; })"
                   RenderStyle="ButtonRenderStyle.Secondary" />
+    </FooterContentTemplate>
+</DxPopup>
+
+<DxPopup @bind-Visible="@showEditPostavkaDialog"
+         HeaderText="Popravi komentar"
+         Width="650px"
+         ShowFooter="true"
+         CloseOnEscape="true">
+    <BodyContentTemplate>
+        <DxMemo @bind-Text="@editPostavkaKomentar" Rows="10" CssClass="w-100" />
+    </BodyContentTemplate>
+    <FooterContentTemplate>
+        @if (!string.IsNullOrEmpty(editPostavkaError))
+        {
+            <span class="text-danger me-auto" style="font-size:0.85rem;">@editPostavkaError</span>
+        }
+        <DxButton Text="Shrani" Click="@SaveEditPostavka" RenderStyle="ButtonRenderStyle.Primary" />
+        <DxButton Text="Prekliči" Click="@(() => showEditPostavkaDialog = false)" RenderStyle="ButtonRenderStyle.Secondary" />
     </FooterContentTemplate>
 </DxPopup>
 
@@ -437,13 +492,16 @@ else
     <BodyContentTemplate>
         <ReklamacijePrilogePanel IdReklamacija="@prilogeIdReklamacija"
                                  PendingPriloge="@prilogePendingPriloge"
+                                  PogodbeZaFaw="@prilogePogodbeZaFaw"
+                                  ShowFawSelection="@(prilogeTipReklamacije == TipReklamacije.PrekinitevPogodbe)"
                                  Height="calc(92vh - 110px)" />
     </BodyContentTemplate>
 </DxPopup>
 
 <DxPopup @bind-Visible="@showZapisFawDialog"
          HeaderText="Zapis v FAW"
-         Width="760px"
+         Width="96vw"
+         Height="92vh"
          ShowFooter="true"
          CloseOnEscape="true">
     <BodyContentTemplate>
@@ -468,7 +526,56 @@ else
                     <DxGridDataColumn FieldName="@nameof(ReklamacijaFawPogodbaDto.NoviDatumVeljavnosti)" Caption="Nova veljavnost" DisplayFormat="dd.MM.yyyy" Width="150px" />
                 </Columns>
             </DxGrid>
-            <p class="mt-3 mb-0">Potrdite zapis novih datumov veljavnosti v FAW.</p>
+            <div style="margin-top:14px; font-weight:600;">Priloge za zapis v FAW</div>
+            @if (zapisFawPriloge.Count == 0)
+            {
+                <div class="text-muted" style="margin-top:6px;">Ni priponk.</div>
+            }
+            else
+            {
+                <div style="display:flex; gap:10px; height:calc(92vh - 285px); min-height:300px; margin-top:6px;">
+                    <div style="flex:0 0 32%; min-width:280px; min-height:0;">
+                        <DxGrid Data="@zapisFawPriloge"
+                                KeyFieldName="@nameof(ZapisFawPrilogaIzbira.Id)"
+                                PageSize="int.MaxValue"
+                                PagerVisible="false"
+                                FocusedRowEnabled="true"
+                                RowClick="@OnZapisFawPrilogaRowClick"
+                                CssClass="w-100 h-100">
+                            <Columns>
+                                <DxGridDataColumn Caption="Izberi" Width="80px">
+                                    <CellDisplayTemplate Context="izbiraContext">
+                                        @{
+                                            var priloga = (ZapisFawPrilogaIzbira)izbiraContext.DataItem;
+                                        }
+                                        <DxCheckBox @bind-Checked="@priloga.Izbrana" />
+                                    </CellDisplayTemplate>
+                                </DxGridDataColumn>
+                                <DxGridDataColumn FieldName="@nameof(ZapisFawPrilogaIzbira.Vrsta)" Caption="Priloga" />
+                                <DxGridDataColumn FieldName="@nameof(ZapisFawPrilogaIzbira.VelikostText)" Caption="Velikost" Width="110px" />
+                            </Columns>
+                        </DxGrid>
+                    </div>
+                    <div style="flex:1; min-width:0; min-height:0; border:1px solid #ddd; display:flex; align-items:center; justify-content:center; overflow:auto; background:#fafafa;">
+                        @if (selectedZapisFawPriloga == null)
+                        {
+                            <span class="text-muted">Izberi priponko za predogled.</span>
+                        }
+                        else if (selectedZapisFawPriloga.JeSlika)
+                        {
+                            <img src="@selectedZapisFawPriloga.DataUrl" style="max-width:100%; max-height:100%; object-fit:contain;" />
+                        }
+                        else if (selectedZapisFawPriloga.JePdf)
+                        {
+                            <iframe src="@selectedZapisFawPriloga.DataUrl" style="width:100%; height:100%; border:0;"></iframe>
+                        }
+                        else
+                        {
+                            <span class="text-muted">Predogled ni na voljo.</span>
+                        }
+                    </div>
+                </div>
+            }
         }
         else
         {
@@ -518,6 +625,10 @@ else
     TipReklamacije? filterTip;
     ReklamacijaGridDto? selectedReklamacija;
     List<ReklamacijaPostavkaDto> selectedPostavke = new();
+    bool showEditPostavkaDialog;
+    int? editPostavkaId;
+    string? editPostavkaKomentar;
+    string? editPostavkaError;
 
     static string TipNaziv(TipReklamacije tip) => tip switch
     {
@@ -533,6 +644,13 @@ else
         .Concat(gridData?.Select(r => r.KdoNajObdela).Where(k => !string.IsNullOrWhiteSpace(k)).Cast<string>() ?? Enumerable.Empty<string>())
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(u => u)
+        .ToList();
+
+    List<string> statusFilterOptions => statusi
+        .Select(s => s.Naziv)
+        .Where(n => !string.IsNullOrWhiteSpace(n))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(n => n)
         .ToList();
 
     List<ReklamacijaGridDto>? filteredGridData => gridData?
@@ -597,13 +715,28 @@ else
 
     bool showPrilogeDialog;
     int? prilogeIdReklamacija;
+    TipReklamacije prilogeTipReklamacije;
+    List<PogodbaZaReklamacijoDto> prilogePogodbeZaFaw = new();
     string prilogeDialogTitle = string.Empty;
     List<ReklamacijaPrilogaVnosDto> prilogePendingPriloge = new();
 
     bool showZapisFawDialog;
     int? zapisFawIdReklamacija;
     ReklamacijaFawPreviewDto? zapisFawPreview;
+    List<ZapisFawPrilogaIzbira> zapisFawPriloge = new();
+    ZapisFawPrilogaIzbira? selectedZapisFawPriloga;
     string? zapisFawError;
+
+    class ZapisFawPrilogaIzbira
+    {
+        public int Id { get; set; }
+        public string VelikostText { get; set; } = string.Empty;
+        public string DataUrl { get; set; } = string.Empty;
+        public bool JeSlika { get; set; }
+        public bool JePdf { get; set; }
+        public string Vrsta => JeSlika ? "Slika" : JePdf ? "PDF" : "Datoteka";
+        public bool Izbrana { get; set; }
+    }
 
     bool showDeleteDialog;
     int? deleteId;
@@ -785,6 +918,40 @@ else
             ShowPostavkaDialog(selectedReklamacija);
     }
 
+    void ShowEditPostavkaDialog(ReklamacijaPostavkaDto postavka)
+    {
+        editPostavkaId = postavka.Id;
+        editPostavkaKomentar = postavka.Komentar;
+        editPostavkaError = null;
+        showEditPostavkaDialog = true;
+    }
+
+    async Task SaveEditPostavka()
+    {
+        if (!editPostavkaId.HasValue)
+            return;
+
+        if (string.IsNullOrWhiteSpace(editPostavkaKomentar))
+        {
+            editPostavkaError = "Vnesite komentar.";
+            return;
+        }
+
+        try
+        {
+            await ReklamacijeService.UpdatePostavkaKomentarAsync(editPostavkaId.Value, editPostavkaKomentar);
+            var postavka = selectedPostavke.FirstOrDefault(p => p.Id == editPostavkaId.Value);
+            if (postavka != null)
+                postavka.Komentar = editPostavkaKomentar;
+
+            showEditPostavkaDialog = false;
+        }
+        catch (Exception ex)
+        {
+            editPostavkaError = ex.Message;
+        }
+    }
+
     async Task ShowStatusiDialog()
     {
         statusiError = null;
@@ -880,31 +1047,61 @@ else
 
     void CustomizeReklamacijeGridElement(GridCustomizeElementEventArgs e)
     {
-        if (e.ElementType != GridElementType.DataRow) return;
+        if (e.ElementType != GridElementType.DataCell) return;
+        if (e.Column is null || e.Grid.GetVisibleColumns().Take(2).Contains(e.Column)) return;
         if (e.Grid.GetDataItem(e.VisibleIndex) is ReklamacijaGridDto item
             && string.IsNullOrWhiteSpace(item.KdoNajObdela)
             && !string.IsNullOrWhiteSpace(item.ZadnjiStatusBarva))
             e.Style = $"background-color:{item.ZadnjiStatusBarva};";
     }
 
-    void ShowPrilogeDialog(ReklamacijaGridDto item)
+    async Task ShowPrilogeDialog(ReklamacijaGridDto item)
     {
         prilogeIdReklamacija = item.Id;
+        prilogeTipReklamacije = item.TipReklamacije;
+        prilogePogodbeZaFaw = item.TipReklamacije == TipReklamacije.PrekinitevPogodbe
+            ? await ReklamacijeService.GetPogodbeZaPrilogeAsync(item.Id)
+            : new();
         prilogeDialogTitle = $"Priponke - {item.PartnerDisplay}";
         prilogePendingPriloge.Clear();
         showPrilogeDialog = true;
+    }
+
+    void OnZapisFawPrilogaRowClick(GridRowClickEventArgs e)
+    {
+        selectedZapisFawPriloga = e.Grid.GetDataItem(e.VisibleIndex) as ZapisFawPrilogaIzbira;
     }
 
     async Task ShowZapisFawDialog(ReklamacijaGridDto item)
     {
         zapisFawIdReklamacija = item.Id;
         zapisFawPreview = null;
+        zapisFawPriloge.Clear();
+        selectedZapisFawPriloga = null;
         zapisFawError = null;
         showZapisFawDialog = true;
 
         try
         {
-            zapisFawPreview = await ReklamacijeService.GetFawPreviewAsync(item.Id);
+            var previewTask = ReklamacijeService.GetFawPreviewAsync(item.Id);
+            var prilogeTask = ReklamacijeService.GetPrilogeAsync(item.Id);
+            await Task.WhenAll(previewTask, prilogeTask);
+
+            zapisFawPreview = await previewTask;
+            var priloge = await prilogeTask;
+            var vsebine = await Task.WhenAll(priloge.Select(p => ReklamacijeService.GetPrilogaVsebinaAsync(p.Id)));
+            zapisFawPriloge = vsebine
+                .Where(p => p != null)
+                .Select(p => new ZapisFawPrilogaIzbira
+                {
+                    Id = p!.Id,
+                    VelikostText = p.VelikostText,
+                    DataUrl = p.DataUrl,
+                    JeSlika = p.JeSlika,
+                    JePdf = p.JePdf
+                })
+                .ToList();
+            selectedZapisFawPriloga = zapisFawPriloge.FirstOrDefault();
         }
         catch (Exception ex)
         {
@@ -942,7 +1139,7 @@ else
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(editKdoNajObdela) && editStatusId == null)
+        if (!editingId.HasValue && string.IsNullOrWhiteSpace(editKdoNajObdela) && editStatusId == null)
         {
             dialogError = "Izberite status.";
             return;
@@ -967,7 +1164,20 @@ else
         {
             if (editingId.HasValue)
             {
-                await ReklamacijeService.UpdateAsync(editingId.Value, form);
+                var updatedId = editingId.Value;
+                await ReklamacijeService.UpdateAsync(updatedId, form);
+                var updated = await ReklamacijeService.GetByIdAsync(updatedId);
+                if (updated != null && gridData != null)
+                {
+                    var index = gridData.FindIndex(r => r.Id == updatedId);
+                    if (index >= 0)
+                        gridData[index] = updated;
+
+                    selectedReklamacija = updated;
+                }
+
+                showDialog = false;
+                return;
             }
             else
             {
