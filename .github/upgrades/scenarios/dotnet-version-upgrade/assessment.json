@@ -1,0 +1,1086 @@
+{
+  "settings": {
+    "components": {
+      "code": true,
+      "binaries": false
+    },
+    "targetId": "net10.0",
+    "targetDisplayName": ".NETCoreApp,Version=v10.0"
+  },
+  "analysisStartTime": "2026-08-06T10:59:48.5502091Z",
+  "analysisEndTime": "2026-08-06T10:59:58.7871282Z",
+  "privacyModeHelpUrl": "https://go.microsoft.com/fwlink/?linkid=2270980",
+  "stats": {
+    "summary": {
+      "projects": 1,
+      "issues": 4,
+      "incidents": 36,
+      "effort": 36
+    },
+    "charts": {
+      "severity": {
+        "Mandatory": 1,
+        "Optional": 0,
+        "Potential": 35,
+        "Information": 0
+      },
+      "category": {
+        "NuGet": 1,
+        "Project": 1,
+        "Api": 34
+      }
+    }
+  },
+  "projects": [
+    {
+      "path": "ObracunDb.csproj",
+      "startingProject": true,
+      "issues": 4,
+      "storyPoints": 36,
+      "properties": {
+        "appName": "ObracunDb",
+        "projectKind": "AspNetCore",
+        "frameworks": [
+          "net8.0"
+        ],
+        "languages": [
+          "C#"
+        ],
+        "tools": [
+          "MSBuild"
+        ],
+        "isSdkStyle": true,
+        "numberOfFiles": 183,
+        "numberOfCodeFiles": 107,
+        "linesTotal": 31030,
+        "linesOfCode": 16503,
+        "totalApiScanned": 71863,
+        "minLinesOfCodeToChange": 34,
+        "maxLinesOfCodeToChange": 34
+      },
+      "ruleInstances": [
+        {
+          "incidentId": "662cf3e6-82ec-44ce-97ff-b92cd177e3d6",
+          "ruleId": "NuGet.0002",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "Microsoft.Extensions.Hosting.WindowsServices, 8.0.1\n\nRecommendation:\n\nRemove Microsoft.Extensions.Hosting.WindowsServices, and replace with new package Microsoft.Extensions.Hosting.WindowsServices 10.0.10",
+              "protected": "Microsoft.Extensions.Hosting.WindowsServices, 8.0.1\n\nRecommendation:\n\nRemove Microsoft.Extensions.Hosting.WindowsServices, and replace with new package Microsoft.Extensions.Hosting.WindowsServices 10.0.10"
+            },
+            "kind": "File",
+            "path": "ObracunDb.csproj",
+            "snippet": "Microsoft.Extensions.Hosting.WindowsServices, 8.0.1\n\nRecommendation:\n\nRemove Microsoft.Extensions.Hosting.WindowsServices, and replace with new package Microsoft.Extensions.Hosting.WindowsServices 10.0.10",
+            "protectedSnippet": "Microsoft.Extensions.Hosting.WindowsServices, 8.0.1\n\nRecommendation:\n\nRemove Microsoft.Extensions.Hosting.WindowsServices, and replace with new package Microsoft.Extensions.Hosting.WindowsServices 10.0.10",
+            "label": "Microsoft.Extensions.Hosting.WindowsServices 8.0.1",
+            "properties": {
+              "PackageId": "Microsoft.Extensions.Hosting.WindowsServices",
+              "PackageVersion": "8.0.1",
+              "PackageNewVersion": "10.0.10",
+              "PackageReplacements": null
+            }
+          }
+        },
+        {
+          "incidentId": "f6e5a7be-4e42-4e42-a4c6-d921ad3a21da",
+          "ruleId": "Project.0002",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "Current target framework: net8.0\nRecommended target framework: net10.0",
+              "protected": "Current target framework: net8.0\nRecommended target framework: net10.0"
+            },
+            "kind": "File",
+            "path": "ObracunDb.csproj",
+            "snippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "protectedSnippet": "Current target framework: net8.0\nRecommended target framework: net10.0",
+            "properties": {
+              "CurrentTargetFramework": "net8.0",
+              "RecommendedTargetFramework": "net10.0"
+            }
+          }
+        },
+        {
+          "incidentId": "1815b210-c698-4ef6-a88e-735d1e67aa05",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "razlika = razlika.Add(TimeSpan.FromDays(1));",
+              "protected": "M:System.TimeSpan.FromDays(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\PartnerService.cs",
+            "snippet": "razlika = razlika.Add(TimeSpan.FromDays(1));",
+            "protectedSnippet": "M:System.TimeSpan.FromDays(System.Double)",
+            "label": "M:System.TimeSpan.FromDays(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 671,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "7b632b4f-ab0b-45e1-aed4-d82b50f71e47",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "razlika = razlika.Add(TimeSpan.FromDays(1));",
+              "protected": "M:System.TimeSpan.FromDays(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\PartnerService.cs",
+            "snippet": "razlika = razlika.Add(TimeSpan.FromDays(1));",
+            "protectedSnippet": "M:System.TimeSpan.FromDays(System.Double)",
+            "label": "M:System.TimeSpan.FromDays(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 376,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "ffcc9e97-d599-4ecf-9fbd-0417bc910b34",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var meja22 = TimeSpan.FromHours(22);",
+              "protected": "M:System.TimeSpan.FromHours(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\MinuteCalculator.cs",
+            "snippet": "var meja22 = TimeSpan.FromHours(22);",
+            "protectedSnippet": "M:System.TimeSpan.FromHours(System.Double)",
+            "label": "M:System.TimeSpan.FromHours(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 314,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "c5d8175c-2758-4024-b912-4b328d7bac36",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var meja16 = TimeSpan.FromHours(16);",
+              "protected": "M:System.TimeSpan.FromHours(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\MinuteCalculator.cs",
+            "snippet": "var meja16 = TimeSpan.FromHours(16);",
+            "protectedSnippet": "M:System.TimeSpan.FromHours(System.Double)",
+            "label": "M:System.TimeSpan.FromHours(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 313,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "e24f55ec-ff4d-41ba-a4d6-208cb613bb00",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var meja7 = TimeSpan.FromHours(7);",
+              "protected": "M:System.TimeSpan.FromHours(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\MinuteCalculator.cs",
+            "snippet": "var meja7 = TimeSpan.FromHours(7);",
+            "protectedSnippet": "M:System.TimeSpan.FromHours(System.Double)",
+            "label": "M:System.TimeSpan.FromHours(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 312,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "2e51c033-b265-473a-9e72-3da6d1c975c8",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "RazdeliMinuteVCasovnePasove(razdelitev, tipDneva, zacetekUra, TimeSpan.FromHours(24));",
+              "protected": "M:System.TimeSpan.FromHours(System.Double)"
+            },
+            "kind": "File",
+            "path": "Services\\MinuteCalculator.cs",
+            "snippet": "RazdeliMinuteVCasovnePasove(razdelitev, tipDneva, zacetekUra, TimeSpan.FromHours(24));",
+            "protectedSnippet": "M:System.TimeSpan.FromHours(System.Double)",
+            "label": "M:System.TimeSpan.FromHours(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 252,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "dca62a47-a90c-4e24-a859-701e8adc7d7d",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseContent = await response.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseContent = await response.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 997,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "36af2bc7-9108-4131-851f-86126dec7d3a",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseJson = JsonDocument.Parse(responseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseJson = JsonDocument.Parse(responseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 944,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "27e7fe8d-b628-4943-b769-d79bb1e252cd",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseJson = JsonDocument.Parse(responseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseJson = JsonDocument.Parse(responseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 944,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "e9bffcd7-66f5-4e73-bde4-77d648421a8b",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseContent = await response.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseContent = await response.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 935,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "818cb29d-e27f-4dc4-9535-94d121323439",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseDoc = JsonDocument.Parse(fakturaResponseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseDoc = JsonDocument.Parse(fakturaResponseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 882,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "95498c51-ea5a-43fb-90aa-dd9d304e0f30",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseDoc = JsonDocument.Parse(fakturaResponseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var responseDoc = JsonDocument.Parse(fakturaResponseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 882,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "d24914e2-37c2-4486-ad46-990058121f41",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var fakturaResponseContent = await fakturaResponse.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var fakturaResponseContent = await fakturaResponse.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 871,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "2eb0b577-5874-4064-b6cf-001d78fa9622",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var authJsonDoc = JsonDocument.Parse(authResponseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var authJsonDoc = JsonDocument.Parse(authResponseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 303,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "87f28ebe-75a8-471f-9890-6f7de0d9dbfa",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var authJsonDoc = JsonDocument.Parse(authResponseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var authJsonDoc = JsonDocument.Parse(authResponseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 303,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "b49b4042-cf88-4993-bf4a-83cded19ebc8",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var authResponseContent = await authResponse.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "Services\\FawService.cs",
+            "snippet": "var authResponseContent = await authResponse.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 295,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "f4412ab7-fdcf-4fc3-9843-b8cd681d94c2",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "new Uri(NavigationManager.Uri)",
+              "protected": "T:System.Uri"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/MainLayout_razor.g.cs",
+            "snippet": "new Uri(NavigationManager.Uri)",
+            "protectedSnippet": "T:System.Uri",
+            "label": "T:System.Uri",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 514,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "38c257cc-106b-498e-b4c7-67541fa11bae",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "new Uri(NavigationManager.Uri)",
+              "protected": "M:System.Uri.#ctor(System.String)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/MainLayout_razor.g.cs",
+            "snippet": "new Uri(NavigationManager.Uri)",
+            "protectedSnippet": "M:System.Uri.#ctor(System.String)",
+            "label": "M:System.Uri.#ctor(System.String)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 514,
+            "column": 24
+          }
+        },
+        {
+          "incidentId": "9176aea6-339a-455e-801e-82e54ce15393",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+              "protected": "T:System.Uri"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/NavMenu_razor.g.cs",
+            "snippet": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+            "protectedSnippet": "T:System.Uri",
+            "label": "T:System.Uri",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 472,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "1ef775bf-122f-4130-946f-6c0ef511cdd3",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+              "protected": "M:System.Uri.#ctor(System.String)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/NavMenu_razor.g.cs",
+            "snippet": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+            "protectedSnippet": "M:System.Uri.#ctor(System.String)",
+            "label": "M:System.Uri.#ctor(System.String)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 472,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "ab7b5db4-d60f-4142-b031-b59c9943ce44",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+              "protected": "T:System.Uri"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/NavMenu_razor.g.cs",
+            "snippet": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+            "protectedSnippet": "T:System.Uri",
+            "label": "T:System.Uri",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 436,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "3c0c4856-c148-4ccc-978c-8412bc682588",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: URI length limits removed ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+              "protected": "M:System.Uri.#ctor(System.String)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Layout/NavMenu_razor.g.cs",
+            "snippet": "currentLocalPath = new Uri(NavigationManager.Uri).LocalPath;",
+            "protectedSnippet": "M:System.Uri.#ctor(System.String)",
+            "label": "M:System.Uri.#ctor(System.String)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/uri-length-limits-removed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 436,
+            "column": 8
+          }
+        },
+        {
+          "incidentId": "61109567-2c9a-46ee-ad4e-fc3b354de420",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "httpClient.Timeout = TimeSpan.FromSeconds(90);",
+              "protected": "M:System.TimeSpan.FromSeconds(System.Double)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/ZapisVFaw_razor.g.cs",
+            "snippet": "httpClient.Timeout = TimeSpan.FromSeconds(90);",
+            "protectedSnippet": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "label": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 948,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "c94abd85-7347-4b2c-b09c-4484944fce7e",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2507,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "ac7c97aa-64dd-47dd-8937-668c6ef68103",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2507,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "3ef6ec59-cb82-45a3-a490-bfc7beb11e59",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2486,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "08c09467-e2d2-42f4-91ba-1252aac7ff1a",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var jsonDoc = System.Text.Json.JsonDocument.Parse(racunContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2486,
+            "column": 20
+          }
+        },
+        {
+          "incidentId": "a6fdefd0-1368-4c2b-8623-8e9fa396dc95",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var racunContent = await racunResponse.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var racunContent = await racunResponse.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2476,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "08ad4075-ab10-492b-86d3-d31218b6c806",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var authJsonDoc = System.Text.Json.JsonDocument.Parse(responseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var authJsonDoc = System.Text.Json.JsonDocument.Parse(responseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2413,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "77866af9-d656-4344-ad25-2106541f11b1",
+          "ruleId": "Api.0003",
+          "description": "Nullable JsonDocument properties deserialize to JsonValueKind.Null ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var authJsonDoc = System.Text.Json.JsonDocument.Parse(responseContent);",
+              "protected": "T:System.Text.Json.JsonDocument"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var authJsonDoc = System.Text.Json.JsonDocument.Parse(responseContent);",
+            "protectedSnippet": "T:System.Text.Json.JsonDocument",
+            "label": "T:System.Text.Json.JsonDocument",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/serialization/9.0/jsondocument-props.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2413,
+            "column": 16
+          }
+        },
+        {
+          "incidentId": "406644be-279f-4961-9acb-b3bd17095c31",
+          "ruleId": "Api.0003",
+          "description": "Breaking change - Streaming HTTP responses enabled by default in browser HTTP clients ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "var responseContent = await response.Content.ReadAsStringAsync();",
+              "protected": "T:System.Net.Http.HttpContent"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "var responseContent = await response.Content.ReadAsStringAsync();",
+            "protectedSnippet": "T:System.Net.Http.HttpContent",
+            "label": "T:System.Net.Http.HttpContent",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/networking/10.0/default-http-streaming.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2393,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "2a99927b-8b08-45e6-9bbf-0bb117770adb",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "httpClient.Timeout = TimeSpan.FromSeconds(90);",
+              "protected": "M:System.TimeSpan.FromSeconds(System.Double)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/Pages/Nastavitve_razor.g.cs",
+            "snippet": "httpClient.Timeout = TimeSpan.FromSeconds(90);",
+            "protectedSnippet": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "label": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 2353,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "b99ee657-b987-4607-b5e3-f5c18b33e652",
+          "ruleId": "Api.0002",
+          "description": "Breaking change: New TimeSpan.From*() overloads that take integers ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };",
+              "protected": "M:System.TimeSpan.FromSeconds(System.Double)"
+            },
+            "kind": "File",
+            "path": "obj\\Debug\\net8.0\\Microsoft.CodeAnalysis.Razor.Compiler\\Microsoft.NET.Sdk.Razor.SourceGenerators.RazorSourceGenerator\\Components/ReklamacijePrilogePanel_razor.g.cs",
+            "snippet": "using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(90) };",
+            "protectedSnippet": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "label": "M:System.TimeSpan.FromSeconds(System.Double)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/core-libraries/9.0/timespan-from-overloads.md",
+                "isCustom": false
+              }
+            ],
+            "line": 1420,
+            "column": 12
+          }
+        },
+        {
+          "incidentId": "416b8fb6-593d-46ec-8f62-f819c0cc7e7c",
+          "ruleId": "Api.0003",
+          "description": "Breaking change: Exception diagnostics are suppressed when IExceptionHandler.TryHandleAsync returns true ",
+          "projectPath": "ObracunDb.csproj",
+          "state": "Active",
+          "location": {
+            "snippetModel": {
+              "unrestricted": "app.UseExceptionHandler(\u0022/Error\u0022, createScopeForErrors: true);",
+              "protected": "M:Microsoft.AspNetCore.Builder.ExceptionHandlerExtensions.UseExceptionHandler(Microsoft.AspNetCore.Builder.IApplicationBuilder,System.String,System.Boolean)"
+            },
+            "kind": "File",
+            "path": "Program.cs",
+            "snippet": "app.UseExceptionHandler(\u0022/Error\u0022, createScopeForErrors: true);",
+            "protectedSnippet": "M:Microsoft.AspNetCore.Builder.ExceptionHandlerExtensions.UseExceptionHandler(Microsoft.AspNetCore.Builder.IApplicationBuilder,System.String,System.Boolean)",
+            "label": "M:Microsoft.AspNetCore.Builder.ExceptionHandlerExtensions.UseExceptionHandler(Microsoft.AspNetCore.Builder.IApplicationBuilder,System.String,System.Boolean)",
+            "links": [
+              {
+                "title": "API documentation",
+                "url": "https://github.com/dotnet/docs/blob/main/docs/core/compatibility/aspnet-core/10/exception-handler-diagnostics-suppressed.md",
+                "isCustom": false
+              }
+            ],
+            "line": 88,
+            "column": 4
+          }
+        }
+      ],
+      "features": []
+    }
+  ],
+  "rules": {
+    "NuGet.0002": {
+      "id": "NuGet.0002",
+      "isFeature": false,
+      "description": "NuGet package upgrade is recommended for selected target framework.\n\nStandard .NET packages are recommended to have versions matching version of .NET that project targets.\n\nSome other packages also are known to work better for selected target frameworks.",
+      "label": "NuGet package upgrade is recommended",
+      "severity": "Potential",
+      "effort": 1,
+      "links": [
+        {
+          "url": "https://go.microsoft.com/fwlink/?linkid=2262530",
+          "isCustom": false
+        }
+      ]
+    },
+    "Project.0002": {
+      "id": "Project.0002",
+      "isFeature": false,
+      "description": "Project\u0027s target framework(s) needs to be changed to the new target framework that you selected for this upgrade.\n\nDuring upgrade target framework will be adjusted to corresponding platform when applicable. In some cases project would result in multiple target frameworks after the upgrade if it was using features that now have their own platforms in modern .NET frameworks (windows, iOS, Android etc).",
+      "label": "Project\u0027s target framework(s) needs to be changed",
+      "severity": "Mandatory",
+      "effort": 1,
+      "links": [
+        {
+          "title": "Overview of porting from .NET Framework to .NET",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2265227",
+          "isCustom": false
+        },
+        {
+          "title": ".NET project SDKs",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2265226",
+          "isCustom": false
+        }
+      ]
+    },
+    "Api.0002": {
+      "id": "Api.0002",
+      "isFeature": false,
+      "description": "API is source incompatible for selected .NET version: requires code changes to compile successfully when targeting a new version, such as removing obsolete APIs or changing method signatures.",
+      "label": "Source incompatible for selected .NET version",
+      "severity": "Potential",
+      "effort": 1,
+      "links": [
+        {
+          "title": "Breaking changes in .NET",
+          "url": "https://go.microsoft.com/fwlink/?linkid=2262679",
+          "isCustom": false
+        }
+      ]
+    },
+    "Api.0003": {
+      "id": "Api.0003",
+      "isFeature": false,
+      "description": "API has a behavioral change in selected .NET version: code and binaries may behave differently at runtime without needing recompilation, but the new behavior might be undesirable and require updates.",
+      "label": "Behavioral change in selected .NET version",
+      "severity": "Potential",
+      "effort": 1
+    }
+  }
+}
