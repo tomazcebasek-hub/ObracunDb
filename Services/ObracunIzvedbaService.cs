@@ -272,18 +272,6 @@ namespace ObracunDb.Services
                     log.Add("Prosim nastavite manjkajoče šifre v Parametri > Servisna.");
                 }
 
-                // Izpiši uporabljene spremembe količin
-                if (spremembeLog.Count > 0)
-                {
-                    log.Add("");
-                    log.Add("============================================");
-                    log.Add("=== SPREMEMBE KOLIČIN (ročne korekture) ===");
-                    log.Add("============================================");
-                    foreach (var v in spremembeLog)
-                        log.Add(v);
-                    log.Add("============================================");
-                }
-
                 log.Add("");
                 log.Add($"Konec: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
 
@@ -330,6 +318,95 @@ namespace ObracunDb.Services
                 }
 
                 ShraniLog(db, mesec, leto, log);
+
+                // Prekini obračun, če je bila kot postavka računa (OBRACUN_OSNUTEK_POS) zapisana šifra artikla,
+                // ki ne obstaja v FA_ARTIKEL. Enaka kontrola kot pri prenosu v FAW.
+                var uporabljeneSifre = db.ObracunOsnutekPos
+                    .Where(p => p.Mesec == mesec && p.Leto == leto)
+                    .Select(p => p.Artikel)
+                    .ToList()
+                    .Select(s => s?.Trim())
+                    .Where(s => !string.IsNullOrWhiteSpace(s) && s != "-")
+                    .Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (uporabljeneSifre.Count > 0)
+                {
+                    var obstojeceSifre = db.FaArtikel
+                        .Where(a => uporabljeneSifre.Contains(a.Sifra))
+                        .Select(a => a.Sifra)
+                        .ToList()
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    var manjkajociArtikli = uporabljeneSifre
+                        .Where(s => !obstojeceSifre.Contains(s))
+                        .OrderBy(s => s)
+                        .ToList();
+
+                    if (manjkajociArtikli.Count > 0)
+                    {
+                        var manjkajociStr = string.Join(", ", manjkajociArtikli);
+                        var manjkajociSet = manjkajociArtikli.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                        // Poišči partnerje, ki imajo manjkajočo šifro med postavkami računa
+                        var prizadetiPartnerji = db.ObracunOsnutekPos
+                            .Where(p => p.Mesec == mesec && p.Leto == leto)
+                            .ToList()
+                            .Where(p => !string.IsNullOrWhiteSpace(p.Artikel) && manjkajociSet.Contains(p.Artikel!.Trim()))
+                            .Select(p => p.Partner)
+                            .Distinct()
+                            .OrderBy(p => p)
+                            .ToList();
+
+                        log.Add("");
+                        log.Add("============================================");
+                        log.Add("=== NAPAKA: ARTIKLI NE OBSTAJAJO V FA_ARTIKEL ===");
+                        log.Add("============================================");
+                        foreach (var sifra in manjkajociArtikli)
+                            log.Add($"   - Artikel '{sifra}' ne obstaja v šifrantu (FA_ARTIKEL)");
+                        log.Add("============================================");
+
+                        // Za vsakega prizadetega partnerja izpiši VSE postavke njegovega računa
+                        foreach (var prizadetiPartner in prizadetiPartnerji)
+                        {
+                            var postavkePartnerja = db.ObracunOsnutekPos
+                                .Where(p => p.Mesec == mesec && p.Leto == leto && p.Partner == prizadetiPartner)
+                                .OrderBy(p => p.Zs)
+                                .ToList();
+
+                            log.Add("");
+                            log.Add($"Partner {prizadetiPartner} — postavke računa ({postavkePartnerja.Count}):");
+                            foreach (var p in postavkePartnerja)
+                            {
+                                var izvor = OpisiIzvorPostavke(p);
+                                var manjkaOznaka = !string.IsNullOrWhiteSpace(p.Artikel) && manjkajociSet.Contains(p.Artikel!.Trim())
+                                    ? "  <<< MANJKA V FA_ARTIKEL"
+                                    : "";
+                                log.Add($"    Zs={p.Zs}, Artikel='{p.Artikel}', Naziv='{p.Naziv}', Kolicina={p.Kolicina}, Cena={p.Cena}, Rabat={p.Rabat}, Izvor={izvor}{manjkaOznaka}");
+                            }
+
+                            // Povzetek: pri katerem dodajanju je nastala manjkajoča postavka
+                            var manjkajocePostavke = postavkePartnerja
+                                .Where(p => !string.IsNullOrWhiteSpace(p.Artikel) && manjkajociSet.Contains(p.Artikel!.Trim()))
+                                .ToList();
+                            foreach (var mp in manjkajocePostavke)
+                            {
+                                log.Add($"    >>> Manjkajoč artikel '{mp.Artikel}' (Zs={mp.Zs}) je bil dodan pri: {OpisiIzvorPostavke(mp)}");
+                            }
+                        }
+                        log.Add("============================================");
+
+                        var partnerjiStr = prizadetiPartnerji.Count > 0
+                            ? $" (partner: {string.Join(", ", prizadetiPartnerji)})"
+                            : "";
+                        var napaka = $"Obračun prekinjen: postavka računa vsebuje artikel, ki ne obstaja v FA_ARTIKEL: {manjkajociStr}{partnerjiStr}.";
+                        log.Add(napaka);
+                        ShraniLog(db, mesec, leto, log);
+                        return (false, napaka, 0, log);
+                    }
+                }
+
                 return (true, $"Obračun uspešno izveden. Pripravljenih osnutkov: {vsiPartnerji.Count}.", vsiPartnerji.Count, log);
             }
             catch (Exception ex)
@@ -2477,6 +2554,24 @@ namespace ObracunDb.Services
         #endregion
 
         #region Shranjevanje
+
+        /// <summary>
+        /// Opiše izvor postavke računa (pri katerem dodajanju je nastala): pogodba, delovni nalog, ročni vnos ...
+        /// </summary>
+        private static string OpisiIzvorPostavke(ObracunOsnutekPos p)
+        {
+            return p.TipPostavke switch
+            {
+                TipPostavke.POGODBA when p.PogodbaStevilka.HasValue =>
+                    $"POGODBA {p.PogodbaStevilka}/{p.PogodbaLeto}",
+                TipPostavke.POGODBA => "POGODBA",
+                TipPostavke.NALOG when !string.IsNullOrWhiteSpace(p.NalogStevilka) =>
+                    $"NALOG {p.NalogStevilka}/{p.NalogLeto} (obračun minut / servisne storitve / kilometrina)",
+                TipPostavke.NALOG => "NALOG (obračun minut / servisne storitve / kilometrina)",
+                TipPostavke.ROCNI => "ROČNI VNOS (dodatna postavka)",
+                _ => p.TipPostavke.ToString()
+            };
+        }
 
         private static void ShraniOsnutek(ObracunContext ctx, PartnerObracunResult result)
         {

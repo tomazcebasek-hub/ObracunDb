@@ -108,6 +108,29 @@ public class FawService
         };
     }
 
+    /// <summary>
+    /// Ponastavi (razveljavi) prenos v FAW za izbrani mesec/leto: počisti RacunStevilka in RacunLeto
+    /// na osnutkih in ločenih računih. Vrne število posodobljenih zapisov.
+    /// </summary>
+    public int PonastaviPrenos(int mesec, int leto)
+    {
+        using var db = CreateDb();
+
+        var osnutki = db.ObracunOsnutek
+            .Where(o => o.Mesec == mesec && o.Leto == leto && (o.RacunStevilka != null || o.RacunLeto != null))
+            .Set(o => o.RacunStevilka, (int?)null)
+            .Set(o => o.RacunLeto, (int?)null)
+            .Update();
+
+        var loceni = db.ObracunOsnutekRacun
+            .Where(r => r.Mesec == mesec && r.Leto == leto && (r.RacunStevilka != null || r.RacunLeto != null))
+            .Set(r => r.RacunStevilka, (int?)null)
+            .Set(r => r.RacunLeto, (int?)null)
+            .Update();
+
+        return osnutki + loceni;
+    }
+
     public List<int> PridobiPartnerjeZaPrenos(int mesec, int leto)
     {
         using var db = CreateDb();
@@ -247,7 +270,7 @@ public class FawService
                 ? postavke
                 : Enumerable.Empty<ObracunOsnutekPos>())
             .Select(p => p.Artikel?.Trim())
-            .Where(sifra => !string.IsNullOrWhiteSpace(sifra))
+            .Where(sifra => !string.IsNullOrWhiteSpace(sifra) && sifra != "-")
             .Cast<string>()
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -471,6 +494,7 @@ public class FawService
         var (uspeh, racunStevilka, racunLeto, sporocilo) = await PosljiNaApi(httpClient, apiUrl, token, fakturaData, log, sw);
         if (!uspeh)
         {
+            LogNapakoApi(log, partner, sporocilo, postavke, sifraKilometrina);
             rezultat.Sporocilo = sporocilo;
             return rezultat;
         }
@@ -715,6 +739,8 @@ public class FawService
             var (uspeh, racunStevilka, racunLeto, sporocilo) = await PosljiNaApi(httpClient, apiUrl, token, fakturaData, log, sw);
             if (!uspeh)
             {
+                LogNapakoApi(log, partner, sporocilo, pogodbaPostavke, sifraKilometrina,
+                    $"ločen račun {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}, prodajalna {prodajalna})");
                 rezultat.Sporocilo = $"Napaka pri ločenem računu {zap}/{stRacunov} (pogodba {pogodbaKey.Stevilka}/{pogodbaKey.Leto}): {sporocilo}";
                 return rezultat;
             }
@@ -834,6 +860,25 @@ public class FawService
             sb.Append(nalogItems[i]);
         }
         return sb.ToString();
+    }
+
+    private static void LogNapakoApi(Action<string>? log, int partner, string sporocilo,
+        List<ObracunOsnutekPos> postavke, string sifraKilometrina, string? kontekst = null)
+    {
+        if (log == null)
+            return;
+
+        var kontekstStr = string.IsNullOrEmpty(kontekst) ? "" : $" [{kontekst}]";
+        log.Invoke("============================================");
+        log.Invoke($"!!! NAPAKA PRI ZAPISU V FAW API — partner {partner}{kontekstStr}");
+        log.Invoke($"!!! Sporočilo: {sporocilo}");
+        log.Invoke($"!!! Postavke računa ({postavke.Count}):");
+        foreach (var p in postavke)
+        {
+            var jeKilometrina = p.Artikel == sifraKilometrina ? " [kilometrina]" : "";
+            log.Invoke($"    Zs={p.Zs}, Artikel='{p.Artikel}', Naziv='{p.Naziv}', Kolicina={p.Kolicina}, Cena={p.Cena}, Rabat={p.Rabat}, Tip={p.TipPostavke}{jeKilometrina}");
+        }
+        log.Invoke("============================================");
     }
 
     private static object[] SestaviApiPostavke(List<ObracunOsnutekPos> postavke, string sifraKilometrina)

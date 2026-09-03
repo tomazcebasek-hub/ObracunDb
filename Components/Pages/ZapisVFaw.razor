@@ -267,6 +267,10 @@
                 return;
             }
 
+            // API ključ velja samo 30 minut → osvežimo ga vsakih 25 minut.
+            var zadnjaAvtentikacija = DateTime.UtcNow;
+            var intervalOsvezitve = TimeSpan.FromMinutes(25);
+
             partnerStatus = "Nalagam podatke...";
             StateHasChanged();
             await Task.Delay(50);
@@ -303,8 +307,36 @@
                 StateHasChanged();
                 await Task.Delay(50);
 
-                var logAction = i < 5 ? (Action<string>)(msg => dnevnik.Add(msg)) : null;
+                // Osveži API ključ, če je od zadnje avtentikacije minilo 25 minut (ključ velja 30 min).
+                if (DateTime.UtcNow - zadnjaAvtentikacija >= intervalOsvezitve)
+                {
+                    partnerStatus = $"[{i + 1}/{stZaPreos}] Osvežujem API ključ...";
+                    StateHasChanged();
+                    await Task.Delay(50);
+
+                    var (reUspeh, reToken, reSporocilo) = await FawService.Avtenticiraj(httpClient, apiUrl, uporabnik, geslo, davcna);
+                    dnevnik.Add($"Osvežitev ključa: {reSporocilo}");
+
+                    if (!reUspeh || string.IsNullOrEmpty(reToken))
+                    {
+                        rezultatSporocilo = $"Napaka pri osvežitvi API ključa: {reSporocilo}";
+                        rezultatUspeh = false;
+                        break;
+                    }
+
+                    token = reToken;
+                    zadnjaAvtentikacija = DateTime.UtcNow;
+                }
+
+                // Podroben log beležimo v začasni medpomnilnik in ga v dnevnik
+                // izpišemo samo ob napaki (ne glede na zaporedno št.).
+                var partnerLog = new List<string>();
+                Action<string> logAction = msg => partnerLog.Add(msg);
                 var rezultat = await FawService.ZapisiRacun(httpClient, apiUrl, token, _mesec, _leto, partner, datumRacuna!.Value, selectedKomercialist!, cache, db, logAction);
+
+                if (!rezultat.Uspeh)
+                    dnevnik.AddRange(partnerLog);
+
                 dnevnik.Add($"{partner}: {rezultat.Sporocilo}");
 
                 if (rezultat.Uspeh)

@@ -6,6 +6,7 @@
 @inject ParametriService Parametri
 @inject ArtikelService ArtikelService
 @inject AuthService AuthService
+@inject FawService FawService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Nastavitve</PageTitle>
@@ -73,11 +74,46 @@ else
                         <DxButton Text="@testButtonText" RenderStyle="ButtonRenderStyle.Info" Click="@OnTestVascoApi" Enabled="@(!isTesting)" />
                         <DxButton Text="Faktura" RenderStyle="ButtonRenderStyle.Info" Click="@OnFakturaVascoApi" />
                         <DxButton Text="Počisti log" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => vascoLog = "")" />
+                        <DxButton Text="dagama" RenderStyle="ButtonRenderStyle.Secondary" Click="@OnNapolniDagama" />
                     </div>
                     @if (!string.IsNullOrEmpty(vascoLog))
                     {
                         <h6 class="mt-3 mb-2"><strong>Status / Log:</strong></h6>
                         <textarea readonly style="width:100%; height:400px; font-family:monospace; font-size:0.85rem; white-space:pre; overflow:auto;">@vascoLog</textarea>
+                    }
+                }
+
+                @if (lahkoPonastavi)
+                {
+                    <h6 class="mt-4 mb-3"><strong>Ponastavi prenos v FAW</strong></h6>
+                    <table class="table table-sm table-borderless">
+                        <tbody>
+                            <tr>
+                                <td style="width:250px; vertical-align:middle;"><strong>Mesec</strong></td>
+                                <td><DxSpinEdit @bind-Value="@ponastaviMesec" MinValue="1" MaxValue="12" style="width:120px;" /></td>
+                            </tr>
+                            <tr>
+                                <td style="vertical-align:middle;"><strong>Leto</strong></td>
+                                <td><DxSpinEdit @bind-Value="@ponastaviLeto" MinValue="2000" MaxValue="2100" style="width:120px;" /></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="d-flex gap-2 mt-2">
+                        <DxButton Text="Ponastavi prenos" RenderStyle="ButtonRenderStyle.Warning" Click="@(() => showPonastaviConfirm = true)" Enabled="@(!showPonastaviConfirm)" />
+                    </div>
+                    @if (showPonastaviConfirm)
+                    {
+                        <div class="alert alert-warning mt-3">
+                            <p>Ponastaviti prenos v FAW za <strong>@ponastaviMesec/@ponastaviLeto</strong>? To počisti številke računov na osnutkih in ločenih računih za to obdobje.</p>
+                            <div class="d-flex gap-2 mt-2">
+                                <DxButton Text="Da, ponastavi" RenderStyle="ButtonRenderStyle.Danger" Click="@OnPonastaviPrenos" />
+                                <DxButton Text="Prekliči" RenderStyle="ButtonRenderStyle.Secondary" Click="@(() => showPonastaviConfirm = false)" />
+                            </div>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(ponastaviSporocilo))
+                    {
+                        <div class="alert @(ponastaviUspeh ? "alert-success" : "alert-danger") mt-2">@ponastaviSporocilo</div>
                     }
                 }
             </div>
@@ -467,8 +503,17 @@ else
 @code {
     bool isLoading = true;
     bool isAdminOrVodja;
+    bool isAdmin;
+    bool lahkoPonastavi;
     int activeTabIndex;
     string? errorMessage;
+
+    // Ponastavi prenos v FAW
+    int ponastaviMesec = DateTime.Now.Month;
+    int ponastaviLeto = DateTime.Now.Year;
+    bool showPonastaviConfirm;
+    string ponastaviSporocilo = "";
+    bool ponastaviUspeh;
 
     // Seznam artiklov za DxComboBox
     List<ArtikelDto>? artikli;
@@ -524,8 +569,13 @@ else
     {
         var vloga = AuthService.CurrentUser?.Vloga;
         isAdminOrVodja = vloga == 0 || vloga == 1;
+        isAdmin = vloga == 0;
 
-        if (!isAdminOrVodja)
+        // Gumb "Ponastavi prenos" je viden adminu ALI uporabniku katja (ne glede na velikost črk).
+        lahkoPonastavi = isAdmin
+            || (AuthService.CurrentUser?.UporabniskoIme?.Equals("katja", StringComparison.OrdinalIgnoreCase) ?? false);
+
+        if (!isAdminOrVodja && !lahkoPonastavi)
         {
             NavigationManager.NavigateTo("/");
             return;
@@ -653,6 +703,34 @@ else
     {
         var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
         vascoLog += $"[{timestamp}] {message}\n";
+        StateHasChanged();
+    }
+
+    void OnNapolniDagama()
+    {
+        vascoApiUrl = "http://eapi.dagama.si/api/v1";
+        vascoApiUporabnik = "tomaz";
+        vascoApiGeslo = "Servis1!";
+        StateHasChanged();
+    }
+
+    void OnPonastaviPrenos()
+    {
+        showPonastaviConfirm = false;
+        ponastaviSporocilo = "";
+        try
+        {
+            var stevilo = FawService.PonastaviPrenos(ponastaviMesec, ponastaviLeto);
+            ponastaviUspeh = true;
+            ponastaviSporocilo = stevilo > 0
+                ? $"Prenos ponastavljen za {ponastaviMesec}/{ponastaviLeto}. Ponastavljenih zapisov: {stevilo}."
+                : $"Za {ponastaviMesec}/{ponastaviLeto} ni bilo prenesenih računov za ponastavitev.";
+        }
+        catch (Exception ex)
+        {
+            ponastaviUspeh = false;
+            ponastaviSporocilo = $"Napaka pri ponastavitvi prenosa: {ex.Message}";
+        }
         StateHasChanged();
     }
 
